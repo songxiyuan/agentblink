@@ -42,6 +42,7 @@ typedef enum {
 
 #ifdef CONFIG_BLINK_LED_STRIP
 static volatile uint8_t s_led_index = 0;
+static volatile float s_led_position = 0.0;
 static volatile uint8_t s_effect_phase = 0;
 static volatile uint8_t s_solid_r = 255;
 static volatile uint8_t s_solid_g = 255;
@@ -123,6 +124,9 @@ static uint32_t current_effect_delay_ms(void)
     if (current_strip_effect() == LIGHT_EFFECT_YELLOW_BLINK) {
         return 60;
     }
+    if (current_strip_effect() == LIGHT_EFFECT_CHASE) {
+        return 100;  // 增加延迟到100ms，使流水灯速度慢一点（约8秒一圈）
+    }
 
     return s_effect_delay_ms;
 }
@@ -145,15 +149,23 @@ static void blink_led(void)
         }
         break;
 
-    case LIGHT_EFFECT_CHASE: // 单点追逐+渐变尾巴
+    case LIGHT_EFFECT_CHASE: // 单点追逐+渐变尾巴，头部渐变亮，尾巴渐变灭
         for (uint8_t i = 0; i < LED_COUNT; i++) {
             display_index = s_led_reverse_order ? (LED_COUNT - 1 - i) : i;
-            int16_t distance = (int16_t)i - s_led_index;
+            float distance = (float)i - s_led_position;
             if (distance < 0) {
                 distance += LED_COUNT;
             }
-            if (distance < 3) {
-                uint8_t intensity = 255 - distance * 80;
+            if (distance >= -0.5 && distance <= 3.5) {
+                float fade = 1.0;
+                if (distance < 1.0) {
+                    // 头部渐变亮，从-0.5到1
+                    fade = (distance + 0.5) / 1.5;
+                } else {
+                    // 尾巴渐变灭，从1到3.5
+                    fade = (3.5 - distance) / 2.5;
+                }
+                uint8_t intensity = (uint8_t)(fade * 255);
                 wheel((s_effect_phase * 32 + i * 16) % 256, &r, &g, &b);
                 led_strip_set_pixel(led_strip, display_index,
                                     (r * intensity) / 255,
@@ -177,7 +189,7 @@ static void blink_led(void)
     case LIGHT_EFFECT_RAINBOW: // 彩虹流动
         for (uint8_t i = 0; i < LED_COUNT; i++) {
             display_index = s_led_reverse_order ? (LED_COUNT - 1 - i) : i;
-            wheel((s_led_index * 16 + i * 24) % 256, &r, &g, &b);
+            wheel((s_led_index * 8 + i * 24) % 256, &r, &g, &b);  // 降低颜色更新频率
             led_strip_set_pixel(led_strip, display_index, r, g, b);
         }
         break;
@@ -366,7 +378,7 @@ static void handle_serial_command(char *line)
         s_effect_phase = 0;
     } else if (strcmp(cmd, "chase") == 0) {
         s_effect = LIGHT_EFFECT_CHASE;
-        s_led_index = 0;
+        s_led_position = 0.0;
     } else if (strcmp(cmd, "alternate") == 0 || strcmp(cmd, "blink") == 0) {
         s_effect = LIGHT_EFFECT_ALTERNATE;
         s_led_index = 0;
@@ -463,10 +475,18 @@ void app_main(void)
     while (1) {
 #ifdef CONFIG_BLINK_LED_STRIP
         blink_led();
-        uint8_t effect_steps = current_strip_effect() == LIGHT_EFFECT_YELLOW_BLINK ? 76 : LED_COUNT;
-        s_led_index = (s_led_index + 1) % effect_steps;
-        if (s_led_index == 0) {
-            s_effect_phase = (s_effect_phase + 1) % 8;
+        if (current_strip_effect() == LIGHT_EFFECT_CHASE) {
+            s_led_position += 0.1;
+            if (s_led_position >= LED_COUNT) {
+                s_led_position -= LED_COUNT;
+                s_effect_phase = (s_effect_phase + 1) % 8;
+            }
+        } else {
+            uint8_t effect_steps = current_strip_effect() == LIGHT_EFFECT_YELLOW_BLINK ? 76 : LED_COUNT;
+            s_led_index = (s_led_index + 1) % effect_steps;
+            if (s_led_index == 0) {
+                s_effect_phase = (s_effect_phase + 1) % 8;
+            }
         }
 #else
         if (s_effect == LIGHT_EFFECT_OFF) {
