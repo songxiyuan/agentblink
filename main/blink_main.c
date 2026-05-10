@@ -121,8 +121,7 @@ static light_effect_t current_strip_effect(void)
 static uint32_t current_effect_delay_ms(void)
 {
     if (current_strip_effect() == LIGHT_EFFECT_YELLOW_BLINK) {
-        uint32_t yellow_delay_ms = (s_effect_delay_ms * 3) / 4;
-        return yellow_delay_ms < 10 ? 10 : yellow_delay_ms;
+        return 60;
     }
 
     return s_effect_delay_ms;
@@ -185,9 +184,16 @@ static void blink_led(void)
 
     case LIGHT_EFFECT_YELLOW_BLINK:
         static const uint8_t breathe_steps[] = {
-            8, 16, 28, 44, 64, 92, 124, 164,
-            205, 236, 255, 236, 205, 164, 124, 92,
-            64, 44, 28, 16
+            4, 5, 6, 7, 8, 10, 12, 14,
+            16, 19, 22, 26, 30, 35, 40, 46,
+            52, 59, 66, 75, 84, 94, 104, 116,
+            128, 141, 154, 167, 180, 192, 204, 216,
+            226, 234, 242, 248, 252, 255, 255, 252,
+            248, 242, 234, 226, 216, 204, 192, 180,
+            167, 154, 141, 128, 116, 104, 94, 84,
+            75, 66, 59, 52, 46, 40, 35, 30,
+            26, 22, 19, 16, 14, 12, 10, 8,
+            7, 6, 5, 4
         };
         uint8_t intensity = breathe_steps[s_led_index % (sizeof(breathe_steps) / sizeof(breathe_steps[0]))];
         for (uint8_t i = 0; i < LED_COUNT; i++) {
@@ -457,7 +463,7 @@ void app_main(void)
     while (1) {
 #ifdef CONFIG_BLINK_LED_STRIP
         blink_led();
-        uint8_t effect_steps = current_strip_effect() == LIGHT_EFFECT_YELLOW_BLINK ? 20 : LED_COUNT;
+        uint8_t effect_steps = current_strip_effect() == LIGHT_EFFECT_YELLOW_BLINK ? 76 : LED_COUNT;
         s_led_index = (s_led_index + 1) % effect_steps;
         if (s_led_index == 0) {
             s_effect_phase = (s_effect_phase + 1) % 8;
