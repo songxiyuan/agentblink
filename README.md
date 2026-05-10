@@ -39,6 +39,79 @@ Run `idf.py -p PORT flash monitor` to build, flash and monitor the project.
 
 (To exit the serial monitor, type ``Ctrl-]``.)
 
+### Serial Commands
+
+After flashing, type a command in the serial monitor and press Enter.
+
+For LED strip mode:
+
+* `help` - show available commands
+* `probe` - identify this ESP32 controller for the Python script
+* `off` - turn all LEDs off
+* `auto` - cycle through chase, alternate, and rainbow effects
+* `chase` - running light with a fading tail
+* `alternate` - alternating orange/blue LEDs
+* `rainbow` - flowing rainbow effect
+* `yellow` - blinking yellow alert
+* `solid R G B` - solid color, for example `solid 255 0 0`
+* `speed MS` - animation delay from 10 to 5000 ms, for example `speed 120`
+
+For GPIO LED mode:
+
+* `help`
+* `probe`
+* `off`
+* `on`
+* `blink`
+* `yellow`
+* `speed MS`
+
+### Python Serial Control
+
+Install the Python serial dependency:
+
+```sh
+python3 -m pip install pyserial
+```
+
+Find the ESP32 serial port:
+
+```sh
+python3 esp32_light_control.py --list-ports
+```
+
+Send commands from Python:
+
+```sh
+python3 esp32_light_control.py rainbow
+python3 esp32_light_control.py solid 255 0 0
+python3 esp32_light_control.py speed 120
+python3 esp32_light_control.py off
+```
+
+The script probes each serial port and selects the one that responds with the ESP32 light controller signature. Flash the latest firmware first so the `probe` command is available. If needed, specify the port manually:
+
+```sh
+python3 esp32_light_control.py -p /dev/cu.usbserial-0001 chase
+```
+
+For a manual prompt:
+
+```sh
+python3 esp32_light_control.py interactive
+```
+
+### Codex Status Lights
+
+Codex status lights are installed globally in `~/.codex/hooks.json` and call scripts in `~/.codex/hooks/`:
+
+* Task running: `chase`
+* Task finished: solid green
+* Approval or input needed: yellow breathing light
+* Session start or other idle state: off
+
+The global hook caches the detected serial port in `~/.codex/hooks/light_port`, so it works from any Codex project after the first successful probe.
+
 See the [Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/latest/get-started/index.html) for full steps to configure and use ESP-IDF to build projects.
 
 ## Example Output
