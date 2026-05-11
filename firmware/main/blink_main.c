@@ -13,7 +13,11 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED
+#include "driver/usb_serial_jtag.h"
+#endif
 #include "esp_log.h"
+#include "buzzer.h"
 #include "led_strip.h"
 #include "sdkconfig.h"
 
@@ -325,10 +329,15 @@ static void print_help(void)
     printf("  yellow               blink LED as an alert\n");
     printf("  speed MS             blink delay, 10-5000 ms\n\n");
 #endif
+#ifdef CONFIG_BUZZER_ENABLE
+    printf("Buzzer commands:\n");
+    printf("  beep [FREQ] [MS]     play a short beep, default 2000 Hz 200 ms\n");
+    printf("  tone FREQ [DUTY]     keep passive buzzer on, duty 1-90 percent\n");
+    printf("  buzzer off           turn passive buzzer off\n\n");
+#endif
 }
 
-#ifdef CONFIG_BLINK_LED_STRIP
-static int parse_byte_arg(const char *arg, uint8_t *value)
+static int parse_long_arg(const char *arg, long min, long max, long *value)
 {
     if (arg == NULL) {
         return -1;
@@ -336,7 +345,19 @@ static int parse_byte_arg(const char *arg, uint8_t *value)
 
     char *endptr = NULL;
     long parsed = strtol(arg, &endptr, 10);
-    if (*arg == '\0' || *endptr != '\0' || parsed < 0 || parsed > 255) {
+    if (*arg == '\0' || *endptr != '\0' || parsed < min || parsed > max) {
+        return -1;
+    }
+
+    *value = parsed;
+    return 0;
+}
+
+#ifdef CONFIG_BLINK_LED_STRIP
+static int parse_byte_arg(const char *arg, uint8_t *value)
+{
+    long parsed = 0;
+    if (parse_long_arg(arg, 0, 255, &parsed) != 0) {
         return -1;
     }
 
@@ -357,7 +378,59 @@ static void handle_serial_command(char *line)
         return;
     } else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0) {
         print_help();
-    } else if (strcmp(cmd, "off") == 0) {
+    }
+#ifdef CONFIG_BUZZER_ENABLE
+    else if (strcmp(cmd, "beep") == 0) {
+        long frequency_hz = 2000;
+        long duration_ms = 200;
+        char *freq_arg = strtok(NULL, " \t\r\n");
+        char *duration_arg = strtok(NULL, " \t\r\n");
+
+        if ((freq_arg != NULL && parse_long_arg(freq_arg, 20, 20000, &frequency_hz) != 0) ||
+            (duration_arg != NULL && parse_long_arg(duration_arg, 10, 10000, &duration_ms) != 0)) {
+            printf("Invalid beep. Use: beep [20..20000] [10..10000]\n");
+            return;
+        }
+
+        if (buzzer_beep((uint32_t)frequency_hz, (uint32_t)duration_ms) != ESP_OK) {
+            printf("Buzzer is disabled or failed to beep\n");
+            return;
+        }
+        printf("Beep: %ld Hz, %ld ms\n", frequency_hz, duration_ms);
+        return;
+    } else if (strcmp(cmd, "tone") == 0) {
+        long frequency_hz = 0;
+        long duty_percent = CONFIG_BUZZER_DUTY_PERCENT;
+        char *freq_arg = strtok(NULL, " \t\r\n");
+        char *duty_arg = strtok(NULL, " \t\r\n");
+
+        if (parse_long_arg(freq_arg, 20, 20000, &frequency_hz) != 0 ||
+            (duty_arg != NULL && parse_long_arg(duty_arg, 1, 90, &duty_percent) != 0)) {
+            printf("Invalid tone. Use: tone 20..20000 [1..90]\n");
+            return;
+        }
+
+        if (buzzer_tone((uint32_t)frequency_hz, (uint8_t)duty_percent) != ESP_OK) {
+            printf("Buzzer is disabled or failed to start tone\n");
+            return;
+        }
+        printf("Tone: %ld Hz, duty %ld%%\n", frequency_hz, duty_percent);
+        return;
+    } else if (strcmp(cmd, "buzzer") == 0) {
+        char *arg = strtok(NULL, " \t\r\n");
+        if (arg != NULL && strcmp(arg, "off") == 0) {
+            if (buzzer_off() != ESP_OK) {
+                printf("Buzzer is disabled or failed to stop\n");
+                return;
+            }
+            printf("Buzzer off\n");
+            return;
+        }
+        printf("Invalid buzzer command. Use: buzzer off\n");
+        return;
+    }
+#endif
+    else if (strcmp(cmd, "off") == 0) {
         s_effect = LIGHT_EFFECT_OFF;
 #ifdef CONFIG_BLINK_LED_STRIP
         s_led_index = 0;
@@ -420,6 +493,22 @@ static void handle_serial_command(char *line)
            (unsigned long)s_effect_delay_ms);
 }
 
+static void feed_command_byte(char ch, char *line, size_t *line_len, size_t line_size)
+{
+    if (ch == '\r' || ch == '\n') {
+        if (*line_len > 0) {
+            line[*line_len] = '\0';
+            handle_serial_command(line);
+            *line_len = 0;
+        }
+    } else if (*line_len < line_size - 1) {
+        line[(*line_len)++] = ch;
+    } else {
+        *line_len = 0;
+        printf("Command too long\n");
+    }
+}
+
 static void serial_command_task(void *arg)
 {
     uint8_t data[UART_CMD_BUF_SIZE];
@@ -427,24 +516,32 @@ static void serial_command_task(void *arg)
     size_t line_len = 0;
 
     while (1) {
+        // Traditional ESP32 dev boards usually expose USB through CP210x/CH34x
+        // chips wired to UART0. Commands from that path arrive here.
         int len = uart_read_bytes(UART_PORT, data, sizeof(data), pdMS_TO_TICKS(50));
         for (int i = 0; i < len; i++) {
-            char ch = (char)data[i];
-            if (ch == '\r' || ch == '\n') {
-                if (line_len > 0) {
-                    line[line_len] = '\0';
-                    handle_serial_command(line);
-                    line_len = 0;
-                }
-            } else if (line_len < sizeof(line) - 1) {
-                line[line_len++] = ch;
-            } else {
-                line_len = 0;
-                printf("Command too long\n");
-            }
+            feed_command_byte((char)data[i], line, &line_len, sizeof(line));
         }
     }
 }
+
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED
+static void usb_serial_jtag_command_task(void *arg)
+{
+    uint8_t data[UART_CMD_BUF_SIZE];
+    char line[UART_CMD_BUF_SIZE];
+    size_t line_len = 0;
+
+    while (1) {
+        // ESP32-C3/S3 boards can expose a native USB-Serial/JTAG port. It looks
+        // like a serial port on the host, but it is not UART0 inside the chip.
+        int len = usb_serial_jtag_read_bytes(data, sizeof(data), pdMS_TO_TICKS(50));
+        for (int i = 0; i < len; i++) {
+            feed_command_byte((char)data[i], line, &line_len, sizeof(line));
+        }
+    }
+}
+#endif
 
 static void configure_serial_commands(void)
 {
@@ -462,6 +559,16 @@ static void configure_serial_commands(void)
     ESP_ERROR_CHECK(uart_set_pin(UART_PORT, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE,
                                  UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     xTaskCreate(serial_command_task, "serial_command", 3072, NULL, 10, NULL);
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED
+    // Keep the same command language available on native USB boards while
+    // preserving UART0 support for boards with an external USB-UART bridge.
+    usb_serial_jtag_driver_config_t usb_serial_jtag_config = {
+        .rx_buffer_size = UART_RX_BUF_SIZE,
+        .tx_buffer_size = UART_RX_BUF_SIZE,
+    };
+    ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&usb_serial_jtag_config));
+    xTaskCreate(usb_serial_jtag_command_task, "usb_serial_command", 3072, NULL, 10, NULL);
+#endif
     print_help();
 }
 
@@ -470,6 +577,7 @@ void app_main(void)
 
     /* Configure the peripheral according to the LED type */
     configure_led();
+    ESP_ERROR_CHECK(buzzer_init());
     configure_serial_commands();
 
     while (1) {

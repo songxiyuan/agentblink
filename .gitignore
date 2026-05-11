@@ -21,6 +21,7 @@ light_port
 # Build artifacts and directories
 **/build/
 build/
+build-esp32*
 *.o
 *.a
 *.out

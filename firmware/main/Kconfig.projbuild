@@ -46,4 +46,26 @@ menu "Example Configuration"
         help
             Define the blinking period in milliseconds.
 
+    config BUZZER_ENABLE
+        bool "Enable passive buzzer"
+        default y
+        help
+            Enable PWM control for a passive buzzer.
+
+    config BUZZER_GPIO
+        int "Passive buzzer GPIO number"
+        depends on BUZZER_ENABLE
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 4
+        help
+            GPIO number connected to the passive buzzer signal input.
+
+    config BUZZER_DUTY_PERCENT
+        int "Passive buzzer duty percent"
+        depends on BUZZER_ENABLE
+        range 1 90
+        default 50
+        help
+            PWM duty cycle used by beep commands. 50 percent is typical for passive buzzers.
+
 endmenu
