@@ -1,5 +1,19 @@
 #!/usr/bin/env python3
-"""Send serial light commands to the ESP32 blink firmware."""
+"""Send serial light commands to the ESP32 blink firmware.
+
+Usage:
+  python3 esp32_light_control.py --list-ports
+  python3 esp32_light_control.py --cache-port chase
+  python3 esp32_light_control.py -p /dev/cu.usbserial-0001 solid 0 255 0
+  python3 esp32_light_control.py -p /dev/cu.usbserial-0001 interactive
+
+Notes:
+  If --port is omitted, the script probes serial ports for ESP32_LIGHT_OK.
+  Use --cache-port after flashing the firmware so hooks can reuse the detected
+  port from ~/.codex/hooks/light_port.
+  Common commands: off, chase, rainbow, yellow, alert, blink, solid R G B,
+  speed MS, raw TEXT.
+"""
 
 from __future__ import annotations
 

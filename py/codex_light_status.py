@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Map Codex lifecycle hook events to the ESP32 light controller."""
+"""Map Codex lifecycle hook events to the ESP32 light controller.
+
+Usage:
+  Codex runs this script from ~/.codex/hooks.json and passes a hook JSON payload
+  on stdin. Keep the hook command synchronous; Codex CLI 0.130.0-alpha.5 reports
+  that async hooks are not supported yet.
+
+Manual test:
+  printf '%s' '{"hook_event_name":"UserPromptSubmit"}' | \
+    CODEX_LIGHT_LOG=true python3 codex_light_status.py
+"""
 
 from __future__ import annotations
 
@@ -127,63 +137,38 @@ def stop_action(payload: dict) -> tuple[str, ...]:
         return ("off",)
 
     if waiting_for_user_input(payload):
-        logger.info("Waiting for user input, setting yellow light")
+        logger.info("Waiting for popup permission or selection, setting yellow light")
         return ("yellow",)
 
-    message = (payload.get("last_assistant_message") or "").strip().lower()
-    logger.debug(f"Last assistant message: {message}")
-    asks_for_input = any(
-        phrase in message
-        for phrase in (
-            "?",
-            "？",
-            "confirm",
-            "choose",
-            "please provide",
-            "which",
-            "需要你",
-            "请确认",
-            "是否",
-            "要不要",
-        )
-    )
-    if asks_for_input:
-        logger.info("Assistant message asks for input, setting yellow light")
-        return ("yellow",)
     logger.info("Normal stop, setting green solid light")
     return ("solid", "0", "255", "0")
 
 
 def waiting_for_user_input(payload: dict) -> bool:
     logger.debug("Checking if waiting for user input")
-    payload_text = json.dumps(payload, ensure_ascii=False).lower()
-    input_markers = (
-        "request_user_input",
-        "approval-requested",
-        "approval_requested",
+
+    event = str(payload.get("hook_event_name") or "").lower()
+    if event in {
         "permissionrequest",
         "permission_request",
-    )
-    if any(marker in payload_text for marker in input_markers):
-        logger.info("Found user input markers in payload")
+        "approvalrequested",
+        "approval_requested",
+        "approval-requested",
+    }:
+        logger.info("Found popup permission event")
         return True
 
-    transcript_path = payload.get("transcript_path")
-    turn_id = payload.get("turn_id")
-    if transcript_path and turn_id:
-        logger.debug(f"Checking transcript file: {transcript_path} for turn_id: {turn_id}")
-        try:
-            with open(transcript_path, "r", encoding="utf-8") as file:
-                lines = [line for line in file if turn_id in line]
-        except OSError as e:
-            logger.warning(f"Failed to read transcript file: {e}")
-            return False
-        transcript_text = "\n".join(lines).lower()
-        if any(marker in transcript_text for marker in input_markers):
-            logger.info("Found user input markers in transcript")
-            return True
+    tool_name = str(payload.get("tool_name") or "").lower()
+    tool_parts = tool_name.replace("-", "_").replace(".", "_").split("_")
+    if tool_name.replace("-", "_").endswith("request_user_input") or tool_parts[-3:] == [
+        "request",
+        "user",
+        "input",
+    ]:
+        logger.info("Found popup user input tool call")
+        return True
 
-    logger.debug("No user input markers found")
+    logger.debug("No popup permission or selection request found")
     return False
 
 
