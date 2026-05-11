@@ -5,11 +5,16 @@
 
 (See the README.md file in the upper level 'examples' directory for more information about examples.)
 
-This example demonstrates how to blink a LED by using the GPIO driver or using the [led_strip](https://components.espressif.com/component/espressif/led_strip) library if the LED is addressable e.g. [WS2812](https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf). The `led_strip` library is installed via [component manager](main/idf_component.yml).
+This example demonstrates how to blink a LED by using the GPIO driver or using the [led_strip](https://components.espressif.com/component/espressif/led_strip) library if the LED is addressable e.g. [WS2812](https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf). The `led_strip` library is installed via [component manager](firmware/main/idf_component.yml).
 
 ## How to Use Example
 
-Before project configuration and build, be sure to set the correct chip target using `idf.py set-target <chip_name>`.
+The ESP-IDF project lives in `firmware/`. Before project configuration and build, enter that directory and set the correct chip target:
+
+```sh
+cd firmware
+idf.py set-target <chip_name>
+```
 
 ### Hardware Required
 
@@ -20,7 +25,11 @@ See [Development Boards](https://www.espressif.com/en/products/devkits) for more
 
 ### Configure the Project
 
-Open the project configuration menu (`idf.py menuconfig`).
+Open the project configuration menu from `firmware/`:
+
+```sh
+idf.py menuconfig
+```
 
 In the `Example Configuration` menu:
 
@@ -35,7 +44,7 @@ In the `Example Configuration` menu:
 
 ### Build and Flash
 
-Run `idf.py -p PORT flash monitor` to build, flash and monitor the project.
+From `firmware/`, run `idf.py -p PORT flash monitor` to build, flash and monitor the project.
 
 (To exit the serial monitor, type ``Ctrl-]``.)
 
@@ -77,31 +86,46 @@ python3 -m pip install pyserial
 Find the ESP32 serial port:
 
 ```sh
-python3 esp32_light_control.py --list-ports
+python3 tools/serial/esp32_light_control.py --list-ports
 ```
 
 Send commands from Python:
 
 ```sh
-python3 esp32_light_control.py rainbow
-python3 esp32_light_control.py solid 255 0 0
-python3 esp32_light_control.py speed 120
-python3 esp32_light_control.py off
+python3 tools/serial/esp32_light_control.py rainbow
+python3 tools/serial/esp32_light_control.py solid 255 0 0
+python3 tools/serial/esp32_light_control.py speed 120
+python3 tools/serial/esp32_light_control.py off
 ```
 
 The script probes each serial port and selects the one that responds with the ESP32 light controller signature. Flash the latest firmware first so the `probe` command is available. If needed, specify the port manually:
 
 ```sh
-python3 esp32_light_control.py -p /dev/cu.usbserial-0001 chase
+python3 tools/serial/esp32_light_control.py -p /dev/cu.usbserial-0001 chase
 ```
 
 For a manual prompt:
 
 ```sh
-python3 esp32_light_control.py interactive
+python3 tools/serial/esp32_light_control.py interactive
 ```
 
 ### Codex Status Lights
+
+Project helper code is organized as:
+
+* `tools/serial/` - Python serial control for the ESP32 light firmware
+* `firmware/` - ESP-IDF firmware project files
+* `codex/hooks/` - Codex lifecycle hook scripts
+* `scripts/` - install and maintenance scripts
+
+Install or update the global Codex hooks:
+
+```sh
+./scripts/install_codex_hooks.py
+```
+
+Use `--no-deps` if `pyserial` is already available to the Python runtime used by the hook.
 
 Codex status lights are installed globally in `~/.codex/hooks.json` and call scripts in `~/.codex/hooks/`:
 
@@ -116,7 +140,7 @@ See the [Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/l
 
 ## Example Output
 
-As you run the example, you will see the LED blinking, according to the previously defined period. For the addressable LED, you can also change the LED color by setting the `led_strip_set_pixel(led_strip, 0, 16, 16, 16);` (LED Strip, Pixel Number, Red, Green, Blue) with values from 0 to 255 in the [source file](main/blink_example_main.c).
+As you run the example, you will see the LED blinking, according to the previously defined period. For the addressable LED, you can also change the LED color by setting the `led_strip_set_pixel(led_strip, 0, 16, 16, 16);` (LED Strip, Pixel Number, Red, Green, Blue) with values from 0 to 255 in the [source file](firmware/main/blink_main.c).
 
 ```text
 I (315) example: Example configured to blink addressable LED!

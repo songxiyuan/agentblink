@@ -8,7 +8,7 @@ Usage:
 
 Manual test:
   printf '%s' '{"hook_event_name":"UserPromptSubmit"}' | \
-    CODEX_LIGHT_LOG=true python3 codex_light_status.py
+    CODEX_LIGHT_LOG=true python3 codex/hooks/codex_light_status.py
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ import sys
 
 
 HOOK_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(HOOK_DIR, "..", ".."))
 
 # Configure logging
 LOG_ENABLED = os.getenv("CODEX_LIGHT_LOG", "false").lower() == "true"
@@ -38,7 +39,14 @@ else:
 logger = logging.getLogger(__name__)
 
 
-CONTROL_SCRIPT = os.path.join(HOOK_DIR, "esp32_light_control.py")
+CONTROL_SCRIPT_CANDIDATES = (
+    os.path.join(HOOK_DIR, "esp32_light_control.py"),
+    os.path.join(REPO_ROOT, "tools", "serial", "esp32_light_control.py"),
+)
+CONTROL_SCRIPT = next(
+    (path for path in CONTROL_SCRIPT_CANDIDATES if os.path.exists(path)),
+    CONTROL_SCRIPT_CANDIDATES[0],
+)
 IDLE_MONITOR_SCRIPT = os.path.join(HOOK_DIR, "light_idle_monitor.py")
 IDLE_MONITOR_PID_FILE = os.path.join(HOOK_DIR, "light_idle_monitor.pid")
 PYTHON_CANDIDATES = (

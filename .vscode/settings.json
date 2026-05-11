@@ -9,11 +9,12 @@
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32"
   },
+  "idf.buildPath": "${workspaceFolder}/firmware/build",
   "clangd.path": "/Users/nomis/.espressif/tools/esp-clang/esp-20.1.1_20250829/esp-clang/bin/clangd",
   "clangd.arguments": [
     "--background-index",
     "--query-driver=**",
-    "--compile-commands-dir=/Users/nomis/Documents/vscode/esp32/blink/build"
+    "--compile-commands-dir=/Users/nomis/Documents/vscode/esp32/blink/firmware/build"
   ],
   "idf.flashType": "UART"
 }

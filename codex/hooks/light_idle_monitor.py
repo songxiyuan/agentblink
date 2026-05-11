@@ -17,7 +17,15 @@ import time
 
 
 HOOK_DIR = os.path.dirname(os.path.abspath(__file__))
-CONTROL_SCRIPT = os.path.join(HOOK_DIR, "esp32_light_control.py")
+REPO_ROOT = os.path.abspath(os.path.join(HOOK_DIR, "..", ".."))
+CONTROL_SCRIPT_CANDIDATES = (
+    os.path.join(HOOK_DIR, "esp32_light_control.py"),
+    os.path.join(REPO_ROOT, "tools", "serial", "esp32_light_control.py"),
+)
+CONTROL_SCRIPT = next(
+    (path for path in CONTROL_SCRIPT_CANDIDATES if os.path.exists(path)),
+    CONTROL_SCRIPT_CANDIDATES[0],
+)
 PYTHON = os.path.join(HOOK_DIR, ".venv", "bin", "python")
 PID_FILE = os.path.join(HOOK_DIR, "light_idle_monitor.pid")
 IDLE_RE = re.compile(r'"HIDIdleTime"\s=\s(\d+)')
