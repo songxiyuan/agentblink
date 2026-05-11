@@ -11,14 +11,16 @@ import subprocess
 import sys
 
 
+HOOK_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Configure logging
 LOG_ENABLED = os.getenv("CODEX_LIGHT_LOG", "false").lower() == "true"
 if LOG_ENABLED:
-    log_file = os.path.join(HOOK_DIR, 'codex_light_status.log')
+    log_file = os.path.join(HOOK_DIR, "codex_light_status.log")
     logging.basicConfig(
         filename=log_file,
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(levelname)s - %(message)s",
     )
 else:
     logging.basicConfig(level=logging.CRITICAL)  # Disable all logs
@@ -26,7 +28,6 @@ else:
 logger = logging.getLogger(__name__)
 
 
-HOOK_DIR = os.path.dirname(os.path.abspath(__file__))
 CONTROL_SCRIPT = os.path.join(HOOK_DIR, "esp32_light_control.py")
 IDLE_MONITOR_SCRIPT = os.path.join(HOOK_DIR, "light_idle_monitor.py")
 IDLE_MONITOR_PID_FILE = os.path.join(HOOK_DIR, "light_idle_monitor.pid")
@@ -120,13 +121,17 @@ def stop_idle_monitor() -> None:
 
 
 def stop_action(payload: dict) -> tuple[str, ...]:
+    logger.info("Processing stop action")
     if stop_was_interrupted(payload):
+        logger.info("Stop was interrupted, turning off lights")
         return ("off",)
 
     if waiting_for_user_input(payload):
+        logger.info("Waiting for user input, setting yellow light")
         return ("yellow",)
 
     message = (payload.get("last_assistant_message") or "").strip().lower()
+    logger.debug(f"Last assistant message: {message}")
     asks_for_input = any(
         phrase in message
         for phrase in (
@@ -143,11 +148,14 @@ def stop_action(payload: dict) -> tuple[str, ...]:
         )
     )
     if asks_for_input:
+        logger.info("Assistant message asks for input, setting yellow light")
         return ("yellow",)
+    logger.info("Normal stop, setting green solid light")
     return ("solid", "0", "255", "0")
 
 
 def waiting_for_user_input(payload: dict) -> bool:
+    logger.debug("Checking if waiting for user input")
     payload_text = json.dumps(payload, ensure_ascii=False).lower()
     input_markers = (
         "request_user_input",
@@ -157,23 +165,30 @@ def waiting_for_user_input(payload: dict) -> bool:
         "permission_request",
     )
     if any(marker in payload_text for marker in input_markers):
+        logger.info("Found user input markers in payload")
         return True
 
     transcript_path = payload.get("transcript_path")
     turn_id = payload.get("turn_id")
     if transcript_path and turn_id:
+        logger.debug(f"Checking transcript file: {transcript_path} for turn_id: {turn_id}")
         try:
             with open(transcript_path, "r", encoding="utf-8") as file:
                 lines = [line for line in file if turn_id in line]
-        except OSError:
+        except OSError as e:
+            logger.warning(f"Failed to read transcript file: {e}")
             return False
         transcript_text = "\n".join(lines).lower()
-        return any(marker in transcript_text for marker in input_markers)
+        if any(marker in transcript_text for marker in input_markers):
+            logger.info("Found user input markers in transcript")
+            return True
 
+    logger.debug("No user input markers found")
     return False
 
 
 def stop_was_interrupted(payload: dict) -> bool:
+    logger.debug("Checking if stop was interrupted")
     status_text = json.dumps(payload, ensure_ascii=False).lower()
     interrupted_markers = (
         "abort",
@@ -188,20 +203,24 @@ def stop_was_interrupted(payload: dict) -> bool:
         "turn_aborted",
     )
     if any(marker in status_text for marker in interrupted_markers):
+        logger.info("Found interruption markers in payload")
         return True
 
     transcript_path = payload.get("transcript_path")
     turn_id = payload.get("turn_id")
     if transcript_path and turn_id:
+        logger.debug(f"Checking transcript file for interruption: {transcript_path} for turn_id: {turn_id}")
         try:
             with open(transcript_path, "r", encoding="utf-8") as file:
                 for line in file:
                     lowered = line.lower()
                     if turn_id in line and ("turn_aborted" in lowered or "interrupted" in lowered):
+                        logger.info("Found interruption markers in transcript")
                         return True
-        except OSError:
-            pass
+        except OSError as e:
+            logger.warning(f"Failed to read transcript file: {e}")
 
+    logger.debug("No interruption markers found")
     return False
 
 
@@ -224,7 +243,7 @@ def command_for_event(payload: dict) -> tuple[str, ...]:
             command = ("chase",)
     elif event == "PermissionRequest":
         command = ("yellow",)
-    elif event == "Stop":
+    elif event in ("Stop", "SessionEnd"):
         command = stop_action(payload)
     else:
         command = ("off",)
