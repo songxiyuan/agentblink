@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Map Codex lifecycle hook events to the ESP32 light controller.
+"""Map AI coding assistant hook events to the ESP32 light controller.
 
 Usage:
-  Codex runs this script from ~/.codex/hooks.json and passes a hook JSON payload
-  on stdin. Keep the hook command synchronous; Codex CLI 0.130.0-alpha.5 reports
-  that async hooks are not supported yet.
+  Codex runs this script from ~/.codex/hooks.json, and Claude Code runs it from
+  ~/.claude/settings.json. Both clients pass a hook JSON payload on stdin.
 
 Manual test:
   printf '%s' '{"hook_event_name":"UserPromptSubmit"}' | \
-    CODEX_LIGHT_LOG=true python3 codex/hooks/codex_light_status.py
+    STATUS_LIGHT_LOG=true python3 ai/hooks/status_light.py
 """
 
 from __future__ import annotations
@@ -24,10 +23,12 @@ import sys
 HOOK_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(HOOK_DIR, "..", ".."))
 
-# Configure logging
-LOG_ENABLED = os.getenv("CODEX_LIGHT_LOG", "false").lower() == "true"
+LOG_ENABLED = any(
+    os.getenv(name, "false").lower() == "true"
+    for name in ("STATUS_LIGHT_LOG", "CODEX_LIGHT_LOG", "CLAUDE_LIGHT_LOG")
+)
 if LOG_ENABLED:
-    log_file = os.path.join(HOOK_DIR, "codex_light_status.log")
+    log_file = os.path.join(HOOK_DIR, "status_light.log")
     logging.basicConfig(
         filename=log_file,
         level=logging.INFO,
@@ -162,9 +163,16 @@ def waiting_for_user_input(payload: dict) -> bool:
         "approvalrequested",
         "approval_requested",
         "approval-requested",
+        "notification",
     }:
-        logger.info("Found popup permission event")
-        return True
+        notification_type = str(payload.get("notification_type") or "").lower()
+        if not notification_type or notification_type in {
+            "permission_prompt",
+            "idle_prompt",
+            "elicitation_dialog",
+        }:
+            logger.info("Found popup permission or notification event")
+            return True
 
     tool_name = str(payload.get("tool_name") or "").lower()
     tool_parts = tool_name.replace("-", "_").replace(".", "_").split("_")
@@ -224,18 +232,15 @@ def command_for_event(payload: dict) -> tuple[str, ...]:
         command = ("off",)
     elif event == "UserPromptSubmit":
         command = ("chase",)
-    elif event == "PreToolUse":
+    elif event in {"PreToolUse", "PostToolUse", "PostToolUseFailure"}:
         if waiting_for_user_input(payload):
             command = ("yellow",)
         else:
             command = ("chase",)
-    elif event == "PostToolUse":
-        if waiting_for_user_input(payload):
-            command = ("yellow",)
-        else:
-            command = ("chase",)
-    elif event == "PermissionRequest":
+    elif event in {"PermissionRequest", "PermissionDenied", "Notification"}:
         command = ("yellow",)
+    elif event in {"SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted"}:
+        command = ("chase",)
     elif event in ("Stop", "SessionEnd"):
         command = stop_action(payload)
     else:
@@ -245,7 +250,7 @@ def command_for_event(payload: dict) -> tuple[str, ...]:
 
 
 def main() -> int:
-    logger.info("Starting codex_light_status script")
+    logger.info("Starting status_light script")
     payload = read_hook_input()
     try:
         command = command_for_event(payload)

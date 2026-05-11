@@ -110,13 +110,13 @@ For a manual prompt:
 python3 tools/serial/esp32_light_control.py interactive
 ```
 
-### Codex Status Lights
+### AI Status Lights
 
 Project helper code is organized as:
 
 * `tools/serial/` - Python serial control for the ESP32 light firmware
 * `firmware/` - ESP-IDF firmware project files
-* `codex/hooks/` - Codex lifecycle hook scripts
+* `ai/hooks/` - Codex and Claude Code lifecycle hook scripts
 * `scripts/` - install and maintenance scripts
 
 Install or update the global Codex hooks:
@@ -125,16 +125,29 @@ Install or update the global Codex hooks:
 ./scripts/install_codex_hooks.py
 ```
 
+Install or update the global Claude Code hooks:
+
+```sh
+./scripts/install_claude_hooks.py
+```
+
+Install both:
+
+```sh
+./scripts/install_codex_hooks.py --target all
+```
+
 Use `--no-deps` if `pyserial` is already available to the Python runtime used by the hook.
 
-Codex status lights are installed globally in `~/.codex/hooks.json` and call scripts in `~/.codex/hooks/`:
+Codex status lights are installed globally in `~/.codex/hooks.json` and call scripts in `~/.codex/hooks/`.
+Claude Code status lights are installed globally in `~/.claude/settings.json` and call scripts in `~/.claude/hooks/`.
 
 * Task running: `chase`
 * Task finished: solid green
 * Approval or input needed: yellow breathing light
 * Session start or other idle state: off
 
-The global hook caches the detected serial port in `~/.codex/hooks/light_port`, so it works from any Codex project after the first successful probe.
+Each global hook caches the detected serial port in its hook directory as `light_port`, so it works from any project after the first successful probe.
 
 See the [Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/latest/get-started/index.html) for full steps to configure and use ESP-IDF to build projects.
 

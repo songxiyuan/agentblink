@@ -10,7 +10,7 @@ Usage:
 Notes:
   If --port is omitted, the script probes serial ports for ESP32_LIGHT_OK.
   Use --cache-port after flashing the firmware so hooks can reuse the detected
-  port from ~/.codex/hooks/light_port.
+  port from the hook directory's light_port cache file.
   Common commands: off, chase, rainbow, yellow, alert, blink, solid R G B,
   speed MS, raw TEXT.
 """

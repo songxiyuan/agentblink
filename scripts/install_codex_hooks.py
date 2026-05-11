@@ -1,27 +1,33 @@
 #!/usr/bin/env python3
-"""Install the ESP32 Codex status light hooks.
+"""Install the ESP32 status light hooks for Codex and Claude Code.
 
-The installer copies the hook scripts into ~/.codex/hooks, merges the Codex
-hook configuration into ~/.codex/hooks.json, and optionally prepares a local
-virtualenv with pyserial for the serial controller.
+The installer copies the hook scripts into each client's hook directory, merges
+the hook configuration, and optionally prepares a local virtualenv with pyserial
+for the serial controller.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import shlex
 import stat
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-HOOK_EVENTS = {
+HOOK_SCRIPTS = (
+    ("ai/hooks/status_light.py", "status_light.py"),
+    ("ai/hooks/light_idle_monitor.py", "light_idle_monitor.py"),
+    ("tools/serial/esp32_light_control.py", "esp32_light_control.py"),
+)
+
+CODEX_EVENTS = {
     "SessionStart": None,
     "UserPromptSubmit": None,
     "PreToolUse": "*",
@@ -30,15 +36,57 @@ HOOK_EVENTS = {
     "Stop": None,
     "SessionEnd": None,
 }
-HOOK_SCRIPTS = (
-    ("codex/hooks/codex_light_status.py", "codex_light_status.py"),
-    ("codex/hooks/light_idle_monitor.py", "light_idle_monitor.py"),
-    ("tools/serial/esp32_light_control.py", "esp32_light_control.py"),
-)
+
+CLAUDE_EVENTS = {
+    "SessionStart": None,
+    "UserPromptSubmit": None,
+    "PreToolUse": None,
+    "PostToolUse": None,
+    "PostToolUseFailure": None,
+    "PermissionRequest": None,
+    "PermissionDenied": None,
+    "Notification": "permission_prompt|idle_prompt|elicitation_dialog",
+    "Stop": None,
+    "SessionEnd": None,
+}
+
+
+@dataclass(frozen=True)
+class Client:
+    name: str
+    config_dir: Path
+    config_name: str
+    events: dict[str, str | None]
+    log_env: str
+
+
+def default_clients() -> dict[str, Client]:
+    return {
+        "codex": Client(
+            name="codex",
+            config_dir=Path.home() / ".codex",
+            config_name="hooks.json",
+            events=CODEX_EVENTS,
+            log_env="CODEX_LIGHT_LOG=true",
+        ),
+        "claude": Client(
+            name="claude",
+            config_dir=Path.home() / ".claude",
+            config_name="settings.json",
+            events=CLAUDE_EVENTS,
+            log_env="CLAUDE_LIGHT_LOG=true",
+        ),
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Install ESP32 status light hooks for Codex.")
+    parser = argparse.ArgumentParser(description="Install ESP32 status light hooks.")
+    parser.add_argument(
+        "--target",
+        choices=("codex", "claude", "all"),
+        default="codex",
+        help="Client to install hooks for.",
+    )
     parser.add_argument(
         "--codex-dir",
         type=Path,
@@ -46,20 +94,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Codex configuration directory.",
     )
     parser.add_argument(
+        "--claude-dir",
+        type=Path,
+        default=Path.home() / ".claude",
+        help="Claude Code configuration directory.",
+    )
+    parser.add_argument(
         "--source-dir",
         type=Path,
         default=REPO_ROOT,
-        help="Repository root containing codex/hooks and tools/serial.",
+        help="Repository root containing ai/hooks and tools/serial.",
     )
     parser.add_argument(
         "--no-deps",
         action="store_true",
-        help="Do not create a hook virtualenv or install pyserial.",
+        help="Do not create hook virtualenvs or install pyserial.",
     )
     parser.add_argument(
         "--no-log",
         action="store_true",
-        help="Install hook commands without CODEX_LIGHT_LOG=true.",
+        help="Install hook commands without status light log env vars.",
     )
     parser.add_argument(
         "--dry-run",
@@ -67,6 +121,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show what would be changed without writing files.",
     )
     return parser
+
+
+def selected_clients(args: argparse.Namespace) -> list[Client]:
+    clients = default_clients()
+    clients["codex"] = Client(
+        name="codex",
+        config_dir=args.codex_dir,
+        config_name=clients["codex"].config_name,
+        events=clients["codex"].events,
+        log_env=clients["codex"].log_env,
+    )
+    clients["claude"] = Client(
+        name="claude",
+        config_dir=args.claude_dir,
+        config_name=clients["claude"].config_name,
+        events=clients["claude"].events,
+        log_env=clients["claude"].log_env,
+    )
+    if args.target == "all":
+        return [clients["codex"], clients["claude"]]
+    return [clients[args.target]]
 
 
 def copy_hook_scripts(source_dir: Path, hook_dir: Path, dry_run: bool) -> None:
@@ -121,10 +196,10 @@ def load_hooks_config(path: Path) -> dict:
     return data
 
 
-def hook_command(script_path: Path, enable_log: bool) -> str:
+def hook_command(script_path: Path, log_env: str, enable_log: bool) -> str:
     parts = ["env"]
     if enable_log:
-        parts.append("CODEX_LIGHT_LOG=true")
+        parts.append(log_env)
     parts.extend(["python3", str(script_path)])
     return " ".join(shlex.quote(part) for part in parts)
 
@@ -150,14 +225,15 @@ def entry_uses_light_hook(entry: object) -> bool:
     for hook in entry.get("hooks", []):
         if not isinstance(hook, dict):
             continue
-        if "codex_light_status.py" in str(hook.get("command", "")):
+        command = str(hook.get("command", ""))
+        if "status_light.py" in command or "codex_light_status.py" in command:
             return True
     return False
 
 
-def merge_hooks_config(config: dict, command: str) -> dict:
+def merge_hooks_config(config: dict, command: str, events: dict[str, str | None]) -> dict:
     hooks = config.setdefault("hooks", {})
-    for event, matcher in HOOK_EVENTS.items():
+    for event, matcher in events.items():
         event_entries = hooks.setdefault(event, [])
         if not isinstance(event_entries, list):
             raise SystemExit(f"hooks.{event} must be a JSON array")
@@ -184,27 +260,33 @@ def write_hooks_config(path: Path, config: dict, dry_run: bool) -> None:
     print(f"Updated {path}")
 
 
+def install_client(client: Client, source_dir: Path, no_deps: bool, no_log: bool, dry_run: bool) -> None:
+    config_dir = client.config_dir.expanduser().resolve()
+    hook_dir = config_dir / "hooks"
+    config_path = config_dir / client.config_name
+    status_script = hook_dir / "status_light.py"
+
+    print(f"Installing {client.name} hooks")
+    copy_hook_scripts(source_dir, hook_dir, dry_run)
+    if not no_deps:
+        install_dependencies(hook_dir, dry_run)
+
+    config = load_hooks_config(config_path)
+    command = hook_command(status_script, log_env=client.log_env, enable_log=not no_log)
+    merge_hooks_config(config, command, client.events)
+    write_hooks_config(config_path, config, dry_run)
+
+
 def main() -> int:
     args = build_parser().parse_args()
-    codex_dir = args.codex_dir.expanduser().resolve()
     source_dir = args.source_dir.expanduser().resolve()
-    hook_dir = codex_dir / "hooks"
-    hooks_json = codex_dir / "hooks.json"
-    status_script = hook_dir / "codex_light_status.py"
-
-    copy_hook_scripts(source_dir, hook_dir, args.dry_run)
-    if not args.no_deps:
-        install_dependencies(hook_dir, args.dry_run)
-
-    config = load_hooks_config(hooks_json)
-    command = hook_command(status_script, enable_log=not args.no_log)
-    merge_hooks_config(config, command)
-    write_hooks_config(hooks_json, config, args.dry_run)
+    for client in selected_clients(args):
+        install_client(client, source_dir, args.no_deps, args.no_log, args.dry_run)
 
     if args.dry_run:
         print("Dry run complete; no files were changed.")
     else:
-        print("Codex status light hooks are installed.")
+        print("Status light hooks are installed.")
     return 0
 
 
