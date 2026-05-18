@@ -33,6 +33,9 @@ static const char *TAG = "example";
 #define UART_CMD_BUF_SIZE 96
 #define SERIAL_PROBE_COMMAND "probe"
 #define SERIAL_PROBE_RESPONSE "ESP32_LIGHT_OK"
+#ifndef CONFIG_SOLID_BUZZER_DURATION_MS
+#define CONFIG_SOLID_BUZZER_DURATION_MS 0
+#endif
 
 typedef enum {
     LIGHT_EFFECT_OFF = 0,
@@ -317,7 +320,7 @@ static void print_help(void)
     printf("  alternate            alternating orange/blue\n");
     printf("  rainbow              flowing rainbow\n");
     printf("  yellow               blinking yellow alert\n");
-    printf("  solid R G B          solid color, each value 0-255\n");
+    printf("  solid R G B [MS]     solid color, optional buzzer duration 0-10000 ms\n");
     printf("  speed MS             animation delay, 10-5000 ms\n\n");
 #else
     printf("\nCommands:\n");
@@ -336,6 +339,19 @@ static void print_help(void)
     printf("  buzzer off           turn passive buzzer off\n\n");
 #endif
 }
+
+#ifdef CONFIG_BUZZER_ENABLE
+static void beep_after_solid(uint32_t duration_ms)
+{
+    if (duration_ms == 0) {
+        return;
+    }
+
+    if (buzzer_beep(CONFIG_SOLID_BUZZER_FREQUENCY_HZ, duration_ms) != ESP_OK) {
+        printf("Solid color set, but buzzer failed to beep\n");
+    }
+}
+#endif
 
 static int parse_long_arg(const char *arg, long min, long max, long *value)
 {
@@ -463,16 +479,26 @@ static void handle_serial_command(char *line)
         s_led_index = 0;
     } else if (strcmp(cmd, "solid") == 0) {
         uint8_t r, g, b;
+        long buzzer_duration_ms = CONFIG_SOLID_BUZZER_DURATION_MS;
         if (parse_byte_arg(strtok(NULL, " \t\r\n"), &r) != 0 ||
             parse_byte_arg(strtok(NULL, " \t\r\n"), &g) != 0 ||
             parse_byte_arg(strtok(NULL, " \t\r\n"), &b) != 0) {
-            printf("Invalid color. Use: solid R G B, each value 0-255\n");
+            printf("Invalid color. Use: solid R G B [MS], color values 0-255, MS 0-10000\n");
+            return;
+        }
+        char *duration_arg = strtok(NULL, " \t\r\n");
+        if (duration_arg != NULL &&
+            parse_long_arg(duration_arg, 0, 10000, &buzzer_duration_ms) != 0) {
+            printf("Invalid solid buzzer duration. Use: solid R G B [0..10000]\n");
             return;
         }
         s_solid_r = r;
         s_solid_g = g;
         s_solid_b = b;
         s_effect = LIGHT_EFFECT_SOLID;
+#ifdef CONFIG_BUZZER_ENABLE
+        beep_after_solid((uint32_t)buzzer_duration_ms);
+#endif
 #else
     } else if (strcmp(cmd, "on") == 0) {
         s_effect = LIGHT_EFFECT_SOLID;

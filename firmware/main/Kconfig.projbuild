@@ -68,4 +68,20 @@ menu "Example Configuration"
         help
             PWM duty cycle used by beep commands. 50 percent is typical for passive buzzers.
 
+    config SOLID_BUZZER_FREQUENCY_HZ
+        int "Solid command buzzer frequency in Hz"
+        depends on BUZZER_ENABLE
+        range 20 20000
+        default 2000
+        help
+            Frequency played by the passive buzzer when the solid command sets all LEDs.
+
+    config SOLID_BUZZER_DURATION_MS
+        int "Solid command buzzer duration in ms"
+        depends on BUZZER_ENABLE
+        range 0 10000
+        default 1000
+        help
+            Buzzer duration after a solid color command. Set to 0 to disable the solid command beep.
+
 endmenu
