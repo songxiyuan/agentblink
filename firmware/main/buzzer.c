@@ -78,6 +78,30 @@ esp_err_t buzzer_beep(uint32_t frequency_hz, uint32_t duration_ms)
     return buzzer_off();
 }
 
+esp_err_t buzzer_drop(uint8_t count)
+{
+    if (count == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    static const uint32_t frequencies[] = {1400, 1000, 800, 600};
+    static const uint32_t durations[] = {30, 30, 40, 60};
+    const size_t pattern_length = sizeof(frequencies) / sizeof(frequencies[0]);
+
+    for (uint8_t c = 0; c < count; c++) {
+        for (size_t i = 0; i < pattern_length; i++) {
+            ESP_RETURN_ON_ERROR(buzzer_tone(frequencies[i], 80), TAG, "set drop tone");
+            vTaskDelay(pdMS_TO_TICKS(durations[i]));
+        }
+        ESP_RETURN_ON_ERROR(buzzer_off(), TAG, "stop drop tone");
+        if (c + 1 < count) {
+            vTaskDelay(pdMS_TO_TICKS(120));
+        }
+    }
+
+    return ESP_OK;
+}
+
 esp_err_t buzzer_off(void)
 {
     ESP_RETURN_ON_ERROR(ledc_set_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL, 0),

@@ -336,6 +336,7 @@ static void print_help(void)
     printf("Buzzer commands:\n");
     printf("  beep [FREQ] [MS]     play a short beep, default 2000 Hz 200 ms\n");
     printf("  tone FREQ [DUTY]     keep passive buzzer on, duty 1-90 percent\n");
+    printf("  drop [COUNT]         play water drop sound, optional repeat count 1-10\n");
     printf("  buzzer off           turn passive buzzer off\n\n");
 #endif
 }
@@ -413,6 +414,21 @@ static void handle_serial_command(char *line)
             return;
         }
         printf("Beep: %ld Hz, %ld ms\n", frequency_hz, duration_ms);
+        return;
+    } else if (strcmp(cmd, "drop") == 0) {
+        long count = 1;
+        char *count_arg = strtok(NULL, " \t\r\n");
+
+        if (count_arg != NULL && parse_long_arg(count_arg, 1, 10, &count) != 0) {
+            printf("Invalid drop count. Use: drop [1..10]\n");
+            return;
+        }
+
+        if (buzzer_drop((uint8_t)count) != ESP_OK) {
+            printf("Buzzer is disabled or failed to play drop sound\n");
+            return;
+        }
+        printf("Water drop: %ld time(s)\n", count);
         return;
     } else if (strcmp(cmd, "tone") == 0) {
         long frequency_hz = 0;
