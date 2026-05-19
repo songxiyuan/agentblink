@@ -299,6 +299,10 @@ INDEX_HTML = r"""<!doctype html>
           <div class="subtle">Use enums and typed fields. Saving writes the JSON file.</div>
         </div>
         <div class="actions">
+          <select id="languageSelect" title="Language">
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+          </select>
           <button id="rawToggle">Raw JSON</button>
           <button class="danger" id="deleteEvent">Delete</button>
           <button class="primary" id="saveConfig">Save</button>
@@ -312,7 +316,7 @@ INDEX_HTML = r"""<!doctype html>
       <div class="raw-wrap hidden" id="rawWrap">
         <div class="panel">
           <div class="panel-header">
-            <h2>Raw JSON</h2>
+            <h2 id="rawTitle">Raw JSON</h2>
             <button id="applyRaw">Apply</button>
           </div>
           <textarea id="rawJson" spellcheck="false"></textarea>
@@ -323,37 +327,143 @@ INDEX_HTML = r"""<!doctype html>
 
   <script>
     const sections = [
-      { key: "light", title: "Light", defaultCommand: ["yellow"] },
-      { key: "buzzer", title: "Buzzer", defaultCommand: ["beep", "2000", "200"] },
-      { key: "vibration", title: "Vibration", defaultCommand: ["vibrate", "500"] },
+      { key: "light", titleKey: "sectionLight", defaultCommand: ["yellow"] },
+      { key: "buzzer", titleKey: "sectionBuzzer", defaultCommand: ["beep", "2000", "200"] },
+      { key: "vibration", titleKey: "sectionVibration", defaultCommand: ["vibrate", "500"] },
     ];
 
     const sectionOptions = {
       light: [
-        ["off", "Off"],
-        ["yellow", "Yellow breathing"],
-        ["chase", "Chase"],
-        ["alternate", "Alternate"],
-        ["rainbow", "Rainbow"],
-        ["auto", "Auto cycle"],
-        ["solid", "Solid color"],
-        ["on", "GPIO on"],
-        ["blink", "GPIO blink"],
+        ["off", "lightOff"],
+        ["yellow", "lightYellow"],
+        ["chase", "lightChase"],
+        ["alternate", "lightAlternate"],
+        ["rainbow", "lightRainbow"],
+        ["auto", "lightAuto"],
+        ["solid", "lightSolid"],
+        ["on", "lightOn"],
+        ["blink", "lightBlink"],
       ],
       buzzer: [
-        ["beep", "Beep"],
-        ["tone", "Continuous tone"],
-        ["drop", "Water drop"],
-        ["off", "Off"],
+        ["beep", "buzzerBeep"],
+        ["tone", "buzzerTone"],
+        ["drop", "buzzerDrop"],
+        ["off", "buzzerOff"],
       ],
       vibration: [
-        ["vibrate", "Vibrate"],
+        ["vibrate", "vibrationVibrate"],
       ],
+    };
+
+    const translations = {
+      en: {
+        appTitle: "ESP32 Events",
+        pageTitle: "ESP32 Event Config",
+        selectEvent: "Select an event",
+        subtitle: "Use enums and typed fields. Saving writes the JSON file.",
+        newEventPlaceholder: "NewEventName",
+        addEventTitle: "Add event",
+        languageTitle: "Language",
+        rawJson: "Raw JSON",
+        delete: "Delete",
+        save: "Save",
+        apply: "Apply",
+        loaded: "Loaded",
+        saved: "Saved",
+        eventAdded: "Event added",
+        eventDeleted: "Event deleted",
+        enterEventName: "Enter an event name",
+        eventExists: "Event already exists",
+        deleteConfirm: "Delete {event}?",
+        rawApplied: "Raw JSON applied",
+        rootObject: "Root must be an object",
+        eventsObject: "events must be an object",
+        enabled: "enabled",
+        mode: "Mode",
+        generatedCommand: "Generated command",
+        description: "Description",
+        notePlaceholder: "{section} note",
+        sectionLight: "Light",
+        sectionBuzzer: "Buzzer",
+        sectionVibration: "Vibration",
+        lightOff: "Off",
+        lightYellow: "Yellow breathing",
+        lightChase: "Chase",
+        lightAlternate: "Alternate",
+        lightRainbow: "Rainbow",
+        lightAuto: "Auto cycle",
+        lightSolid: "Solid color",
+        lightOn: "GPIO on",
+        lightBlink: "GPIO blink",
+        buzzerBeep: "Beep",
+        buzzerTone: "Continuous tone",
+        buzzerDrop: "Water drop",
+        buzzerOff: "Off",
+        vibrationVibrate: "Vibrate",
+        color: "Color",
+        optionalBeepMs: "Optional beep ms",
+        frequencyHz: "Frequency Hz",
+        durationMs: "Duration ms",
+        dutyPercent: "Duty percent",
+        repeatCount: "Repeat count",
+      },
+      zh: {
+        appTitle: "ESP32 事件",
+        pageTitle: "ESP32 事件配置",
+        selectEvent: "选择一个事件",
+        subtitle: "使用枚举和参数输入配置动作，保存后会写入 JSON 文件。",
+        newEventPlaceholder: "新事件名称",
+        addEventTitle: "添加事件",
+        languageTitle: "语言",
+        rawJson: "原始 JSON",
+        delete: "删除",
+        save: "保存",
+        apply: "应用",
+        loaded: "已加载",
+        saved: "已保存",
+        eventAdded: "事件已添加",
+        eventDeleted: "事件已删除",
+        enterEventName: "请输入事件名称",
+        eventExists: "事件已存在",
+        deleteConfirm: "删除 {event}？",
+        rawApplied: "原始 JSON 已应用",
+        rootObject: "根节点必须是对象",
+        eventsObject: "events 必须是对象",
+        enabled: "启用",
+        mode: "模式",
+        generatedCommand: "生成的命令",
+        description: "说明",
+        notePlaceholder: "{section} 说明",
+        sectionLight: "灯光",
+        sectionBuzzer: "蜂鸣器",
+        sectionVibration: "震动",
+        lightOff: "关闭",
+        lightYellow: "黄色呼吸灯",
+        lightChase: "流水灯",
+        lightAlternate: "交替闪烁",
+        lightRainbow: "彩虹",
+        lightAuto: "自动循环",
+        lightSolid: "纯色",
+        lightOn: "GPIO 常亮",
+        lightBlink: "GPIO 闪烁",
+        buzzerBeep: "短响",
+        buzzerTone: "持续音",
+        buzzerDrop: "水滴音",
+        buzzerOff: "关闭",
+        vibrationVibrate: "震动",
+        color: "颜色",
+        optionalBeepMs: "可选蜂鸣时长 ms",
+        frequencyHz: "频率 Hz",
+        durationMs: "时长 ms",
+        dutyPercent: "占空比 %",
+        repeatCount: "重复次数",
+      },
     };
 
     let config = { default: { light: { command: ["off"] } }, events: {} };
     let selectedEvent = "";
     let rawVisible = false;
+    let language = localStorage.getItem("esp32EventConfigLanguage") || "en";
 
     const eventList = document.getElementById("eventList");
     const editor = document.getElementById("editor");
@@ -361,6 +471,31 @@ INDEX_HTML = r"""<!doctype html>
     const currentTitle = document.getElementById("currentTitle");
     const rawWrap = document.getElementById("rawWrap");
     const rawJson = document.getElementById("rawJson");
+    const languageSelect = document.getElementById("languageSelect");
+
+    function t(key, params = {}) {
+      let text = (translations[language] || translations.en)[key] || translations.en[key] || key;
+      for (const [name, value] of Object.entries(params)) {
+        text = text.replaceAll(`{${name}}`, value);
+      }
+      return text;
+    }
+
+    function renderStaticText() {
+      document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+      document.title = t("pageTitle");
+      document.querySelector("aside h1").textContent = t("appTitle");
+      document.querySelector(".topbar .subtle").textContent = t("subtitle");
+      document.getElementById("newEvent").placeholder = t("newEventPlaceholder");
+      document.getElementById("addEvent").title = t("addEventTitle");
+      languageSelect.title = t("languageTitle");
+      document.getElementById("rawToggle").textContent = t("rawJson");
+      document.getElementById("deleteEvent").textContent = t("delete");
+      document.getElementById("saveConfig").textContent = t("save");
+      document.getElementById("rawTitle").textContent = t("rawJson");
+      document.getElementById("applyRaw").textContent = t("apply");
+      languageSelect.value = language;
+    }
 
     function setStatus(text, kind = "") {
       statusEl.textContent = text;
@@ -465,11 +600,11 @@ INDEX_HTML = r"""<!doctype html>
           refreshCommandText();
         };
         params.append(
-          makeColorField("Color", rgbToHex(...rgb), value => {
+          makeColorField(t("color"), rgbToHex(...rgb), value => {
             rgb = hexToRgb(value);
             update();
           }),
-          makeNumberField("Optional beep ms", beepMs, 0, 10000, value => {
+          makeNumberField(t("optionalBeepMs"), beepMs, 0, 10000, value => {
             beepMs = value;
             update();
           })
@@ -484,11 +619,11 @@ INDEX_HTML = r"""<!doctype html>
           refreshCommandText();
         };
         params.append(
-          makeNumberField("Frequency Hz", frequency, 20, 20000, value => {
+          makeNumberField(t("frequencyHz"), frequency, 20, 20000, value => {
             frequency = value;
             update();
           }),
-          makeNumberField("Duration ms", duration, 10, 10000, value => {
+          makeNumberField(t("durationMs"), duration, 10, 10000, value => {
             duration = value;
             update();
           })
@@ -503,11 +638,11 @@ INDEX_HTML = r"""<!doctype html>
           refreshCommandText();
         };
         params.append(
-          makeNumberField("Frequency Hz", frequency, 20, 20000, value => {
+          makeNumberField(t("frequencyHz"), frequency, 20, 20000, value => {
             frequency = value;
             update();
           }),
-          makeNumberField("Duty percent", duty, 1, 90, value => {
+          makeNumberField(t("dutyPercent"), duty, 1, 90, value => {
             duty = value;
             update();
           })
@@ -516,7 +651,7 @@ INDEX_HTML = r"""<!doctype html>
 
       if (sectionKey === "buzzer" && mode === "drop") {
         let count = clampNumber(command[1], 1, 10, 1);
-        params.append(makeNumberField("Repeat count", count, 1, 10, value => {
+        params.append(makeNumberField(t("repeatCount"), count, 1, 10, value => {
           count = value;
           setSectionCommand(entry, sectionKey, ["drop", count]);
           refreshCommandText();
@@ -525,7 +660,7 @@ INDEX_HTML = r"""<!doctype html>
 
       if (sectionKey === "vibration") {
         let duration = clampNumber(command[1], 1, 60000, 500);
-        params.append(makeNumberField("Duration ms", duration, 1, 60000, value => {
+        params.append(makeNumberField(t("durationMs"), duration, 1, 60000, value => {
           duration = value;
           setSectionCommand(entry, sectionKey, ["vibrate", duration]);
           refreshCommandText();
@@ -566,7 +701,7 @@ INDEX_HTML = r"""<!doctype html>
     function renderEditor() {
       editor.innerHTML = "";
       if (!selectedEvent) {
-        currentTitle.textContent = "Select an event";
+        currentTitle.textContent = t("selectEvent");
         return;
       }
 
@@ -580,24 +715,24 @@ INDEX_HTML = r"""<!doctype html>
         panel.className = "panel";
         panel.innerHTML = `
           <div class="panel-header">
-            <h2>${section.title}</h2>
+            <h2>${t(section.titleKey)}</h2>
             <label class="toggle">
               <input type="checkbox" ${enabled ? "checked" : ""}>
-              enabled
+              ${t("enabled")}
             </label>
           </div>
           <div class="field">
-            <label>Mode</label>
+            <label>${t("mode")}</label>
             <select class="mode"></select>
           </div>
           <div class="param-grid"></div>
           <div class="field">
-            <label>Generated command</label>
+            <label>${t("generatedCommand")}</label>
             <input class="command" readonly>
           </div>
           <div class="field">
-            <label>Description</label>
-            <textarea class="description" placeholder="${section.title} note"></textarea>
+            <label>${t("description")}</label>
+            <textarea class="description" placeholder="${t("notePlaceholder", { section: t(section.titleKey) })}"></textarea>
           </div>
         `;
 
@@ -607,10 +742,10 @@ INDEX_HTML = r"""<!doctype html>
         const command = panel.querySelector(".command");
         const description = panel.querySelector(".description");
 
-        for (const [optionValue, label] of sectionOptions[section.key]) {
+        for (const [optionValue, labelKey] of sectionOptions[section.key]) {
           const option = document.createElement("option");
           option.value = optionValue;
-          option.textContent = label;
+          option.textContent = t(labelKey);
           modeSelect.appendChild(option);
         }
         modeSelect.value = mode;
@@ -663,6 +798,7 @@ INDEX_HTML = r"""<!doctype html>
     }
 
     function render() {
+      renderStaticText();
       renderEvents();
       renderEditor();
       renderRaw();
@@ -675,7 +811,7 @@ INDEX_HTML = r"""<!doctype html>
       config = payload.config;
       document.getElementById("configPath").textContent = payload.path;
       render();
-      setStatus("Loaded", "ok");
+      setStatus(t("loaded"), "ok");
     }
 
     async function saveConfig() {
@@ -685,29 +821,29 @@ INDEX_HTML = r"""<!doctype html>
         body: JSON.stringify(config),
       });
       if (!response.ok) throw new Error(await response.text());
-      setStatus("Saved", "ok");
+      setStatus(t("saved"), "ok");
     }
 
     document.getElementById("addEvent").addEventListener("click", () => {
       const input = document.getElementById("newEvent");
       const name = input.value.trim();
-      if (!name) return setStatus("Enter an event name", "error");
+      if (!name) return setStatus(t("enterEventName"), "error");
       if (!config.events) config.events = {};
-      if (config.events[name]) return setStatus("Event already exists", "error");
+      if (config.events[name]) return setStatus(t("eventExists"), "error");
       config.events[name] = { light: { command: ["yellow"] } };
       input.value = "";
       selectedEvent = name;
       render();
-      setStatus("Event added");
+      setStatus(t("eventAdded"));
     });
 
     document.getElementById("deleteEvent").addEventListener("click", () => {
       if (!selectedEvent) return;
-      if (!confirm(`Delete ${selectedEvent}?`)) return;
+      if (!confirm(t("deleteConfirm", { event: selectedEvent }))) return;
       delete config.events[selectedEvent];
       selectedEvent = "";
       render();
-      setStatus("Event deleted");
+      setStatus(t("eventDeleted"));
     });
 
     document.getElementById("saveConfig").addEventListener("click", () => {
@@ -719,17 +855,24 @@ INDEX_HTML = r"""<!doctype html>
       renderRaw();
     });
 
+    languageSelect.addEventListener("change", () => {
+      language = languageSelect.value;
+      localStorage.setItem("esp32EventConfigLanguage", language);
+      render();
+      setStatus("");
+    });
+
     document.getElementById("applyRaw").addEventListener("click", () => {
       try {
         const next = JSON.parse(rawJson.value);
-        if (!next || typeof next !== "object" || Array.isArray(next)) throw new Error("Root must be an object");
+        if (!next || typeof next !== "object" || Array.isArray(next)) throw new Error(t("rootObject"));
         if (!next.events || typeof next.events !== "object" || Array.isArray(next.events)) {
-          throw new Error("events must be an object");
+          throw new Error(t("eventsObject"));
         }
         config = next;
         selectedEvent = Object.keys(config.events).sort()[0] || "";
         render();
-        setStatus("Raw JSON applied");
+        setStatus(t("rawApplied"));
       } catch (error) {
         setStatus(error.message, "error");
       }

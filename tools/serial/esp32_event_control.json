@@ -10,19 +10,14 @@
     "PermissionRequest": {
       "light": {
         "command": [
-          "solid",
-          "225",
-          "121",
-          "35",
-          "0"
+          "alternate"
         ],
         "description": "Yellow breathing light"
       },
       "buzzer": {
         "command": [
-          "beep",
-          "2000",
-          "200"
+          "drop",
+          "1"
         ],
         "description": "Short 2000 Hz beep for 200 ms"
       },
