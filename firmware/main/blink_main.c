@@ -34,9 +34,6 @@ static const char *TAG = "example";
 #define UART_CMD_BUF_SIZE 96
 #define SERIAL_PROBE_COMMAND "probe"
 #define SERIAL_PROBE_RESPONSE "ESP32_LIGHT_OK"
-#ifndef CONFIG_SOLID_BUZZER_DURATION_MS
-#define CONFIG_SOLID_BUZZER_DURATION_MS 0
-#endif
 
 typedef enum {
     LIGHT_EFFECT_OFF = 0,
@@ -320,9 +317,8 @@ static void print_help(void)
     printf("  chase                running light with fading tail\n");
     printf("  alternate            alternating orange/blue\n");
     printf("  rainbow              flowing rainbow\n");
-    printf("  yellow               blinking yellow alert\n");
-    printf("  solid R G B [MS]     solid color, optional buzzer duration 0-10000 ms\n");
-    printf("  alert R G B BEEP VIB solid color + buzzer/vibration, durations in ms\n");
+    printf("  yellow               blinking yellow light\n");
+    printf("  solid R G B          solid color\n");
     printf("  speed MS             animation delay, 10-5000 ms\n\n");
 #else
     printf("\nCommands:\n");
@@ -331,8 +327,7 @@ static void print_help(void)
     printf("  off                  turn LED off\n");
     printf("  on                   turn LED on\n");
     printf("  blink                blink LED\n");
-    printf("  yellow               blink LED as an alert\n");
-    printf("  alert [BEEP] [VIB]   alert LED + optional buzzer/vibration durations in ms\n");
+    printf("  yellow               blink LED in yellow mode\n");
     printf("  speed MS             blink delay, 10-5000 ms\n\n");
 #endif
 #ifdef CONFIG_BUZZER_ENABLE
@@ -346,40 +341,6 @@ static void print_help(void)
     printf("Vibration motor commands:\n");
     printf("  vibrate MS           set motor GPIO high for 1-60000 ms\n");
     printf("  motor MS             same as vibrate MS\n\n");
-#endif
-}
-
-#ifdef CONFIG_BUZZER_ENABLE
-static void beep_after_solid(uint32_t duration_ms)
-{
-    if (duration_ms == 0) {
-        return;
-    }
-
-    if (buzzer_beep(CONFIG_SOLID_BUZZER_FREQUENCY_HZ, duration_ms) != ESP_OK) {
-        printf("Solid color set, but buzzer failed to beep\n");
-    }
-}
-#endif
-
-static void start_alert_outputs(uint32_t buzzer_duration_ms, uint32_t motor_duration_ms)
-{
-#ifdef CONFIG_BUZZER_ENABLE
-    if (buzzer_duration_ms > 0 &&
-        buzzer_beep(CONFIG_SOLID_BUZZER_FREQUENCY_HZ, buzzer_duration_ms) != ESP_OK) {
-        printf("Alert buzzer failed to start\n");
-    }
-#else
-    (void)buzzer_duration_ms;
-#endif
-
-#ifdef CONFIG_VIBRATION_MOTOR_ENABLE
-    if (motor_duration_ms > 0 &&
-        vibration_motor_vibrate(motor_duration_ms) != ESP_OK) {
-        printf("Alert vibration failed to start\n");
-    }
-#else
-    (void)motor_duration_ms;
 #endif
 }
 
@@ -540,52 +501,22 @@ static void handle_serial_command(char *line)
     } else if (strcmp(cmd, "yellow") == 0) {
         s_effect = LIGHT_EFFECT_YELLOW_BLINK;
         s_led_index = 0;
-    } else if (strcmp(cmd, "alert") == 0) {
-        uint8_t r, g, b;
-        long buzzer_duration_ms = 200;
-        long motor_duration_ms = 500;
-        char *r_arg = strtok(NULL, " \t\r\n");
-
-        if (r_arg == NULL) {
-            s_effect = LIGHT_EFFECT_YELLOW_BLINK;
-            s_led_index = 0;
-            start_alert_outputs((uint32_t)buzzer_duration_ms, (uint32_t)motor_duration_ms);
-        } else if (parse_byte_arg(r_arg, &r) != 0 ||
-                   parse_byte_arg(strtok(NULL, " \t\r\n"), &g) != 0 ||
-                   parse_byte_arg(strtok(NULL, " \t\r\n"), &b) != 0 ||
-                   parse_long_arg(strtok(NULL, " \t\r\n"), 0, 10000, &buzzer_duration_ms) != 0 ||
-                   parse_long_arg(strtok(NULL, " \t\r\n"), 0, 60000, &motor_duration_ms) != 0) {
-            printf("Invalid alert. Use: alert R G B BEEP_MS VIBRATE_MS\n");
-            return;
-        } else {
-            s_solid_r = r;
-            s_solid_g = g;
-            s_solid_b = b;
-            s_effect = LIGHT_EFFECT_SOLID;
-            start_alert_outputs((uint32_t)buzzer_duration_ms, (uint32_t)motor_duration_ms);
-        }
     } else if (strcmp(cmd, "solid") == 0) {
         uint8_t r, g, b;
-        long buzzer_duration_ms = CONFIG_SOLID_BUZZER_DURATION_MS;
         if (parse_byte_arg(strtok(NULL, " \t\r\n"), &r) != 0 ||
             parse_byte_arg(strtok(NULL, " \t\r\n"), &g) != 0 ||
             parse_byte_arg(strtok(NULL, " \t\r\n"), &b) != 0) {
-            printf("Invalid color. Use: solid R G B [MS], color values 0-255, MS 0-10000\n");
+            printf("Invalid color. Use: solid R G B, color values 0-255\n");
             return;
         }
-        char *duration_arg = strtok(NULL, " \t\r\n");
-        if (duration_arg != NULL &&
-            parse_long_arg(duration_arg, 0, 10000, &buzzer_duration_ms) != 0) {
-            printf("Invalid solid buzzer duration. Use: solid R G B [0..10000]\n");
+        if (strtok(NULL, " \t\r\n") != NULL) {
+            printf("Invalid color. Use: solid R G B, buzzer is controlled separately with beep/tone commands\n");
             return;
         }
         s_solid_r = r;
         s_solid_g = g;
         s_solid_b = b;
         s_effect = LIGHT_EFFECT_SOLID;
-#ifdef CONFIG_BUZZER_ENABLE
-        beep_after_solid((uint32_t)buzzer_duration_ms);
-#endif
 #else
     } else if (strcmp(cmd, "on") == 0) {
         s_effect = LIGHT_EFFECT_SOLID;
@@ -594,19 +525,6 @@ static void handle_serial_command(char *line)
         s_effect = LIGHT_EFFECT_AUTO;
     } else if (strcmp(cmd, "yellow") == 0) {
         s_effect = LIGHT_EFFECT_YELLOW_BLINK;
-    } else if (strcmp(cmd, "alert") == 0) {
-        long buzzer_duration_ms = 200;
-        long motor_duration_ms = 500;
-        char *buzzer_arg = strtok(NULL, " \t\r\n");
-        char *motor_arg = strtok(NULL, " \t\r\n");
-
-        if ((buzzer_arg != NULL && parse_long_arg(buzzer_arg, 0, 10000, &buzzer_duration_ms) != 0) ||
-            (motor_arg != NULL && parse_long_arg(motor_arg, 0, 60000, &motor_duration_ms) != 0)) {
-            printf("Invalid alert. Use: alert [0..10000] [0..60000]\n");
-            return;
-        }
-        s_effect = LIGHT_EFFECT_YELLOW_BLINK;
-        start_alert_outputs((uint32_t)buzzer_duration_ms, (uint32_t)motor_duration_ms);
 #endif
     } else {
         printf("Unknown command: %s\n", cmd);

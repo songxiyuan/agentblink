@@ -61,7 +61,7 @@ For LED strip mode:
 * `chase` - running light with a fading tail
 * `alternate` - alternating orange/blue LEDs
 * `rainbow` - flowing rainbow effect
-* `yellow` - blinking yellow alert
+* `yellow` - blinking yellow light
 * `solid R G B` - solid color, for example `solid 255 0 0`
 * `speed MS` - animation delay from 10 to 5000 ms, for example `speed 120`
 

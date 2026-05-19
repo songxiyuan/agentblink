@@ -5,7 +5,6 @@ Usage:
   python3 tools/serial/esp32_light_control.py --list-ports
   python3 tools/serial/esp32_light_control.py --cache-port chase
   python3 tools/serial/esp32_light_control.py -p /dev/cu.usbserial-0001 solid 0 255 0
-  python3 tools/serial/esp32_light_control.py alert 255 0 0 800 1200
   python3 tools/serial/esp32_light_control.py beep 2000 300
   python3 tools/serial/esp32_light_control.py vibrate 1200
   python3 tools/serial/esp32_light_control.py --command-line yellow --command-line "beep 2000 200"
@@ -15,8 +14,8 @@ Notes:
   If --port is omitted, the script probes serial ports for ESP32_LIGHT_OK.
   Use --cache-port after flashing the firmware so hooks can reuse the detected
   port from the hook directory's light_port cache file.
-  Common commands: off, chase, rainbow, yellow, blink, solid R G B [MS],
-  alert [R G B BEEP_MS VIBRATE_MS], beep [FREQ] [MS], tone FREQ [DUTY],
+  Common commands: off, chase, rainbow, yellow, blink, solid R G B,
+  beep [FREQ] [MS], tone FREQ [DUTY],
   buzzer off, drop [COUNT], vibrate MS, speed MS, raw TEXT.
 """
 
@@ -80,14 +79,10 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("help", "off", "auto", "chase", "alternate", "rainbow", "yellow", "on", "blink"):
         subparsers.add_parser(name, help=f"Send '{name}'")
 
-    solid = subparsers.add_parser("solid", help="Set a solid RGB color, optionally with a buzzer beep")
+    solid = subparsers.add_parser("solid", help="Set a solid RGB color")
     solid.add_argument("r", type=rgb_value, help="Red value 0-255")
     solid.add_argument("g", type=rgb_value, help="Green value 0-255")
     solid.add_argument("b", type=rgb_value, help="Blue value 0-255")
-    solid.add_argument("beep_ms", nargs="?", type=optional_beep_duration, help="Optional buzzer duration, 0-10000 ms")
-
-    alert = subparsers.add_parser("alert", help="Start light alert plus optional buzzer and vibration")
-    alert.add_argument("values", nargs="*", type=int, help="No args, or R G B BEEP_MS VIBRATE_MS")
 
     beep = subparsers.add_parser("beep", help="Play a timed buzzer beep")
     beep.add_argument("frequency_hz", nargs="?", type=buzzer_frequency, default=2000, help="Frequency from 20 to 20000 Hz")
@@ -135,10 +130,6 @@ def beep_duration(value: str) -> int:
     return ranged_int(value, 10, 10000, "beep duration")
 
 
-def optional_beep_duration(value: str) -> int:
-    return ranged_int(value, 0, 10000, "beep duration")
-
-
 def duty_percent(value: str) -> int:
     return ranged_int(value, 1, 90, "duty percent")
 
@@ -149,25 +140,6 @@ def drop_count(value: str) -> int:
 
 def vibration_duration(value: str) -> int:
     return ranged_int(value, 1, 60000, "vibration duration")
-
-
-def alert_values(values: list[int]) -> list[int]:
-    if not values:
-        return []
-    if len(values) != 5:
-        raise argparse.ArgumentTypeError("alert expects no args, or R G B BEEP_MS VIBRATE_MS")
-
-    ranges = (
-        ("red value", values[0], 0, 255),
-        ("green value", values[1], 0, 255),
-        ("blue value", values[2], 0, 255),
-        ("beep duration", values[3], 0, 10000),
-        ("vibration duration", values[4], 0, 60000),
-    )
-    for name, parsed, minimum, maximum in ranges:
-        if parsed < minimum or parsed > maximum:
-            raise argparse.ArgumentTypeError(f"{name} must be between {minimum} and {maximum}")
-    return values
 
 
 def ranged_int(value: str, minimum: int, maximum: int, name: str) -> int:
@@ -320,15 +292,7 @@ def command_text(args: argparse.Namespace) -> str | None:
     if args.command in {"help", "off", "auto", "chase", "alternate", "rainbow", "yellow", "on", "blink"}:
         return args.command
     if args.command == "solid":
-        text = f"solid {args.r} {args.g} {args.b}"
-        if args.beep_ms is not None:
-            text += f" {args.beep_ms}"
-        return text
-    if args.command == "alert":
-        values = alert_values(args.values)
-        if not values:
-            return "alert"
-        return "alert " + " ".join(str(value) for value in values)
+        return f"solid {args.r} {args.g} {args.b}"
     if args.command == "beep":
         return f"beep {args.frequency_hz} {args.duration_ms}"
     if args.command == "tone":

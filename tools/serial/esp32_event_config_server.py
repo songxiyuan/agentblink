@@ -415,7 +415,6 @@ INDEX_HTML = r"""<!doctype html>
         buzzerOff: "Off",
         vibrationVibrate: "Vibrate",
         color: "Color",
-        optionalBeepMs: "Optional beep ms",
         frequencyHz: "Frequency Hz",
         durationMs: "Duration ms",
         dutyPercent: "Duty percent",
@@ -472,7 +471,6 @@ INDEX_HTML = r"""<!doctype html>
         buzzerOff: "关闭",
         vibrationVibrate: "震动",
         color: "颜色",
-        optionalBeepMs: "可选蜂鸣时长 ms",
         frequencyHz: "频率 Hz",
         durationMs: "时长 ms",
         dutyPercent: "占空比 %",
@@ -556,7 +554,7 @@ INDEX_HTML = r"""<!doctype html>
 
     function defaultCommandFor(sectionKey, mode) {
       if (sectionKey === "light") {
-        if (mode === "solid") return ["solid", "255", "180", "0", "0"];
+        if (mode === "solid") return ["solid", "255", "180", "0"];
         return [mode || "yellow"];
       }
       if (sectionKey === "buzzer") {
@@ -619,18 +617,14 @@ INDEX_HTML = r"""<!doctype html>
           clampNumber(command[2], 0, 255, 180),
           clampNumber(command[3], 0, 255, 0),
         ];
-        let beepMs = clampNumber(command[4], 0, 10000, 0);
         const update = () => {
-          setSectionCommand(entry, sectionKey, ["solid", ...rgb, beepMs]);
+          setSectionCommand(entry, sectionKey, ["solid", ...rgb]);
           refreshCommandText();
         };
+        update();
         params.append(
           makeColorField(t("color"), rgbToHex(...rgb), value => {
             rgb = hexToRgb(value);
-            update();
-          }),
-          makeNumberField(t("optionalBeepMs"), beepMs, 0, 10000, value => {
-            beepMs = value;
             update();
           })
         );
@@ -960,6 +954,38 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def normalize_config(data: Any) -> Any:
+    if not isinstance(data, dict):
+        return data
+
+    for events in data.values():
+        if not isinstance(events, dict):
+            continue
+        for entry in events.values():
+            normalize_entry(entry)
+    return data
+
+
+def normalize_entry(entry: Any) -> None:
+    if not isinstance(entry, dict):
+        return
+    if "command" in entry:
+        entry["command"] = normalize_command_values(entry["command"])
+        return
+    for section in ("light", "buzzer", "vibration"):
+        section_entry = entry.get(section)
+        if isinstance(section_entry, dict) and "command" in section_entry:
+            section_entry["command"] = normalize_command_values(section_entry["command"])
+
+
+def normalize_command_values(command: Any) -> Any:
+    if not isinstance(command, list) or not command:
+        return command
+    if str(command[0]) == "solid" and len(command) > 4:
+        return command[:4]
+    return command
+
+
 def validate_config(data: Any) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("Root JSON value must be an object")
@@ -998,15 +1024,28 @@ def validate_command(command: Any, path: str) -> None:
     for item in command:
         if not isinstance(item, (str, int, float)):
             raise ValueError(f"{path} items must be strings or numbers")
+    command_name = str(command[0])
+    if command_name == "alert":
+        raise ValueError(f"{path}: alert command has been removed; use light, buzzer, and vibration sections separately")
+    if command_name == "solid":
+        if len(command) != 4:
+            raise ValueError(f"{path}: solid command must be solid R G B")
+        for index, name in enumerate(("R", "G", "B"), start=1):
+            try:
+                value = int(command[index])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{path}: solid {name} must be an integer") from exc
+            if value < 0 or value > 255:
+                raise ValueError(f"{path}: solid {name} must be between 0 and 255")
 
 
 def read_config(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as file:
-        return validate_config(json.load(file))
+        return validate_config(normalize_config(json.load(file)))
 
 
 def write_config(path: Path, data: dict[str, Any]) -> None:
-    validate_config(data)
+    data = validate_config(normalize_config(data))
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
     path.write_text(text, encoding="utf-8")
