@@ -10,7 +10,7 @@
     "PermissionRequest": {
       "light": {
         "command": [
-          "alternate"
+          "yellow"
         ],
         "description": "Yellow breathing light"
       },

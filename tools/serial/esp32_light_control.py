@@ -439,8 +439,12 @@ def main() -> int:
         if text is None:
             parser.error("unknown command")
 
-    port = args.port or read_cached_port() or find_esp32_port(args.baud, quiet=args.quiet)
-    if args.cache_port:
+    detected_port = False
+    port = args.port or read_cached_port()
+    if not port:
+        port = find_esp32_port(args.baud, quiet=args.quiet)
+        detected_port = True
+    if detected_port or args.cache_port:
         write_cached_port(port)
 
     connection = open_serial(port, args.baud)
