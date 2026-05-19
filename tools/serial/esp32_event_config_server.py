@@ -160,7 +160,7 @@ INDEX_HTML = r"""<!doctype html>
       margin-top: 14px;
     }
 
-    input, textarea {
+    input, textarea, select {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -168,6 +168,16 @@ INDEX_HTML = r"""<!doctype html>
       color: var(--text);
       padding: 8px 10px;
       min-height: 36px;
+    }
+
+    input[type="color"] {
+      height: 38px;
+      padding: 3px;
+    }
+
+    input[readonly] {
+      background: #f3f5f7;
+      color: var(--muted);
     }
 
     textarea {
@@ -203,6 +213,17 @@ INDEX_HTML = r"""<!doctype html>
       display: grid;
       gap: 6px;
       margin-bottom: 12px;
+    }
+
+    .param-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .param-grid .wide {
+      grid-column: 1 / -1;
     }
 
     label {
@@ -275,7 +296,7 @@ INDEX_HTML = r"""<!doctype html>
       <div class="topbar">
         <div>
           <h1 id="currentTitle">Select an event</h1>
-          <div class="subtle">Edit each device explicitly. Saving writes the JSON file.</div>
+          <div class="subtle">Use enums and typed fields. Saving writes the JSON file.</div>
         </div>
         <div class="actions">
           <button id="rawToggle">Raw JSON</button>
@@ -302,10 +323,33 @@ INDEX_HTML = r"""<!doctype html>
 
   <script>
     const sections = [
-      { key: "light", title: "Light", placeholder: "yellow" },
-      { key: "buzzer", title: "Buzzer", placeholder: "beep 2000 200" },
-      { key: "vibration", title: "Vibration", placeholder: "vibrate 500" },
+      { key: "light", title: "Light", defaultCommand: ["yellow"] },
+      { key: "buzzer", title: "Buzzer", defaultCommand: ["beep", "2000", "200"] },
+      { key: "vibration", title: "Vibration", defaultCommand: ["vibrate", "500"] },
     ];
+
+    const sectionOptions = {
+      light: [
+        ["off", "Off"],
+        ["yellow", "Yellow breathing"],
+        ["chase", "Chase"],
+        ["alternate", "Alternate"],
+        ["rainbow", "Rainbow"],
+        ["auto", "Auto cycle"],
+        ["solid", "Solid color"],
+        ["on", "GPIO on"],
+        ["blink", "GPIO blink"],
+      ],
+      buzzer: [
+        ["beep", "Beep"],
+        ["tone", "Continuous tone"],
+        ["drop", "Water drop"],
+        ["off", "Off"],
+      ],
+      vibration: [
+        ["vibrate", "Vibrate"],
+      ],
+    };
 
     let config = { default: { light: { command: ["off"] } }, events: {} };
     let selectedEvent = "";
@@ -323,12 +367,170 @@ INDEX_HTML = r"""<!doctype html>
       statusEl.className = "status" + (kind ? " " + kind : "");
     }
 
-    function commandToText(command) {
-      return Array.isArray(command) ? command.join(" ") : "";
+    function clampNumber(value, minimum, maximum, fallback) {
+      const parsed = Number.parseInt(value, 10);
+      if (Number.isNaN(parsed)) return fallback;
+      return Math.min(Math.max(parsed, minimum), maximum);
     }
 
-    function textToCommand(text) {
-      return text.trim().split(/\s+/).filter(Boolean);
+    function rgbToHex(r, g, b) {
+      return [r, g, b]
+        .map(value => clampNumber(value, 0, 255, 0).toString(16).padStart(2, "0"))
+        .join("")
+        .replace(/^/, "#");
+    }
+
+    function hexToRgb(hex) {
+      const match = /^#?([0-9a-f]{6})$/i.exec(hex);
+      const value = match ? match[1] : "ffff00";
+      return [
+        Number.parseInt(value.slice(0, 2), 16),
+        Number.parseInt(value.slice(2, 4), 16),
+        Number.parseInt(value.slice(4, 6), 16),
+      ];
+    }
+
+    function commandName(command, fallback) {
+      return Array.isArray(command) && command.length ? String(command[0]) : fallback;
+    }
+
+    function defaultCommandFor(sectionKey, mode) {
+      if (sectionKey === "light") {
+        if (mode === "solid") return ["solid", "255", "180", "0", "0"];
+        return [mode || "yellow"];
+      }
+      if (sectionKey === "buzzer") {
+        if (mode === "tone") return ["tone", "2000", "50"];
+        if (mode === "drop") return ["drop", "1"];
+        if (mode === "off") return ["buzzer", "off"];
+        return ["beep", "2000", "200"];
+      }
+      return ["vibrate", "500"];
+    }
+
+    function sectionMode(sectionKey, command) {
+      const name = commandName(command, "");
+      if (sectionKey === "buzzer" && name === "buzzer") return command[1] === "off" ? "off" : "beep";
+      if (sectionKey === "vibration") return "vibrate";
+      return name || defaultCommandFor(sectionKey)[0];
+    }
+
+    function setSectionCommand(entry, sectionKey, command) {
+      if (!entry[sectionKey]) entry[sectionKey] = {};
+      entry[sectionKey].command = command.map(value => String(value));
+    }
+
+    function makeNumberField(labelText, value, minimum, maximum, onInput) {
+      const field = document.createElement("div");
+      field.className = "field";
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = String(minimum);
+      input.max = String(maximum);
+      input.value = String(value);
+      input.addEventListener("input", () => onInput(clampNumber(input.value, minimum, maximum, value)));
+      field.append(label, input);
+      return field;
+    }
+
+    function makeColorField(labelText, value, onInput) {
+      const field = document.createElement("div");
+      field.className = "field wide";
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = "color";
+      input.value = value;
+      input.addEventListener("input", () => onInput(input.value));
+      field.append(label, input);
+      return field;
+    }
+
+    function renderParameterControls(sectionKey, params, entry, refreshCommandText) {
+      const command = entry[sectionKey]?.command || defaultCommandFor(sectionKey);
+      const mode = sectionMode(sectionKey, command);
+      params.innerHTML = "";
+
+      if (sectionKey === "light" && mode === "solid") {
+        let rgb = [
+          clampNumber(command[1], 0, 255, 255),
+          clampNumber(command[2], 0, 255, 180),
+          clampNumber(command[3], 0, 255, 0),
+        ];
+        let beepMs = clampNumber(command[4], 0, 10000, 0);
+        const update = () => {
+          setSectionCommand(entry, sectionKey, ["solid", ...rgb, beepMs]);
+          refreshCommandText();
+        };
+        params.append(
+          makeColorField("Color", rgbToHex(...rgb), value => {
+            rgb = hexToRgb(value);
+            update();
+          }),
+          makeNumberField("Optional beep ms", beepMs, 0, 10000, value => {
+            beepMs = value;
+            update();
+          })
+        );
+      }
+
+      if (sectionKey === "buzzer" && mode === "beep") {
+        let frequency = clampNumber(command[1], 20, 20000, 2000);
+        let duration = clampNumber(command[2], 10, 10000, 200);
+        const update = () => {
+          setSectionCommand(entry, sectionKey, ["beep", frequency, duration]);
+          refreshCommandText();
+        };
+        params.append(
+          makeNumberField("Frequency Hz", frequency, 20, 20000, value => {
+            frequency = value;
+            update();
+          }),
+          makeNumberField("Duration ms", duration, 10, 10000, value => {
+            duration = value;
+            update();
+          })
+        );
+      }
+
+      if (sectionKey === "buzzer" && mode === "tone") {
+        let frequency = clampNumber(command[1], 20, 20000, 2000);
+        let duty = clampNumber(command[2], 1, 90, 50);
+        const update = () => {
+          setSectionCommand(entry, sectionKey, ["tone", frequency, duty]);
+          refreshCommandText();
+        };
+        params.append(
+          makeNumberField("Frequency Hz", frequency, 20, 20000, value => {
+            frequency = value;
+            update();
+          }),
+          makeNumberField("Duty percent", duty, 1, 90, value => {
+            duty = value;
+            update();
+          })
+        );
+      }
+
+      if (sectionKey === "buzzer" && mode === "drop") {
+        let count = clampNumber(command[1], 1, 10, 1);
+        params.append(makeNumberField("Repeat count", count, 1, 10, value => {
+          count = value;
+          setSectionCommand(entry, sectionKey, ["drop", count]);
+          refreshCommandText();
+        }));
+      }
+
+      if (sectionKey === "vibration") {
+        let duration = clampNumber(command[1], 1, 60000, 500);
+        params.append(makeNumberField("Duration ms", duration, 1, 60000, value => {
+          duration = value;
+          setSectionCommand(entry, sectionKey, ["vibrate", duration]);
+          refreshCommandText();
+        }));
+      }
     }
 
     function ensureEvent(name) {
@@ -373,6 +575,7 @@ INDEX_HTML = r"""<!doctype html>
       for (const section of sections) {
         const value = entry[section.key] || {};
         const enabled = Boolean(entry[section.key]);
+        const mode = sectionMode(section.key, value.command);
         const panel = document.createElement("section");
         panel.className = "panel";
         panel.innerHTML = `
@@ -384,8 +587,13 @@ INDEX_HTML = r"""<!doctype html>
             </label>
           </div>
           <div class="field">
-            <label>Command</label>
-            <input class="command" placeholder="${section.placeholder}">
+            <label>Mode</label>
+            <select class="mode"></select>
+          </div>
+          <div class="param-grid"></div>
+          <div class="field">
+            <label>Generated command</label>
+            <input class="command" readonly>
           </div>
           <div class="field">
             <label>Description</label>
@@ -394,16 +602,36 @@ INDEX_HTML = r"""<!doctype html>
         `;
 
         const checkbox = panel.querySelector("input[type=checkbox]");
+        const modeSelect = panel.querySelector(".mode");
+        const params = panel.querySelector(".param-grid");
         const command = panel.querySelector(".command");
         const description = panel.querySelector(".description");
-        command.value = commandToText(value.command);
+
+        for (const [optionValue, label] of sectionOptions[section.key]) {
+          const option = document.createElement("option");
+          option.value = optionValue;
+          option.textContent = label;
+          modeSelect.appendChild(option);
+        }
+        modeSelect.value = mode;
+
+        const refreshCommandText = () => {
+          command.value = (entry[section.key]?.command || []).join(" ");
+          renderRaw();
+        };
+
+        if (enabled) {
+          renderParameterControls(section.key, params, entry, refreshCommandText);
+        }
+        refreshCommandText();
         description.value = value.description || "";
+        modeSelect.disabled = !enabled;
         command.disabled = !enabled;
         description.disabled = !enabled;
 
         checkbox.addEventListener("change", () => {
           if (checkbox.checked) {
-            entry[section.key] = { command: textToCommand(command.value || section.placeholder) };
+            entry[section.key] = { command: defaultCommandFor(section.key, modeSelect.value) };
             if (description.value.trim()) entry[section.key].description = description.value.trim();
           } else {
             delete entry[section.key];
@@ -411,9 +639,10 @@ INDEX_HTML = r"""<!doctype html>
           render();
         });
 
-        command.addEventListener("input", () => {
+        modeSelect.addEventListener("change", () => {
           if (!entry[section.key]) return;
-          entry[section.key].command = textToCommand(command.value);
+          setSectionCommand(entry, section.key, defaultCommandFor(section.key, modeSelect.value));
+          render();
         });
 
         description.addEventListener("input", () => {
@@ -421,6 +650,7 @@ INDEX_HTML = r"""<!doctype html>
           const text = description.value.trim();
           if (text) entry[section.key].description = text;
           else delete entry[section.key].description;
+          renderRaw();
         });
 
         editor.appendChild(panel);
