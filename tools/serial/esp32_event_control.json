@@ -1,0 +1,43 @@
+{
+  "default": {
+    "light": {
+      "command": ["off"]
+    }
+  },
+  "events": {
+    "PermissionRequest": {
+      "light": {
+        "command": ["yellow"],
+        "description": "Yellow breathing light"
+      },
+      "buzzer": {
+        "command": ["drop"],
+        "description": "Short 2000 Hz beep for 200 ms"
+      },
+      "vibration": {
+        "command": ["vibrate", "500"],
+        "description": "Short vibration for 500 ms"
+      }
+    },
+    "UserPromptSubmit": {
+      "light": {
+        "command": ["chase"]
+      }
+    },
+    "Stop": {
+      "light": {
+        "command": ["solid", "0", "255", "0", "0"]
+      }
+    },
+    "SessionStart": {
+      "light": {
+        "command": ["off"]
+      }
+    },
+    "SessionEnd": {
+      "light": {
+        "command": ["off"]
+      }
+    }
+  }
+}

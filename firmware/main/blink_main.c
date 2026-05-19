@@ -18,6 +18,7 @@
 #endif
 #include "esp_log.h"
 #include "buzzer.h"
+#include "vibration_motor.h"
 #include "led_strip.h"
 #include "sdkconfig.h"
 
@@ -321,6 +322,7 @@ static void print_help(void)
     printf("  rainbow              flowing rainbow\n");
     printf("  yellow               blinking yellow alert\n");
     printf("  solid R G B [MS]     solid color, optional buzzer duration 0-10000 ms\n");
+    printf("  alert R G B BEEP VIB solid color + buzzer/vibration, durations in ms\n");
     printf("  speed MS             animation delay, 10-5000 ms\n\n");
 #else
     printf("\nCommands:\n");
@@ -330,6 +332,7 @@ static void print_help(void)
     printf("  on                   turn LED on\n");
     printf("  blink                blink LED\n");
     printf("  yellow               blink LED as an alert\n");
+    printf("  alert [BEEP] [VIB]   alert LED + optional buzzer/vibration durations in ms\n");
     printf("  speed MS             blink delay, 10-5000 ms\n\n");
 #endif
 #ifdef CONFIG_BUZZER_ENABLE
@@ -338,6 +341,11 @@ static void print_help(void)
     printf("  tone FREQ [DUTY]     keep passive buzzer on, duty 1-90 percent\n");
     printf("  drop [COUNT]         play water drop sound, optional repeat count 1-10\n");
     printf("  buzzer off           turn passive buzzer off\n\n");
+#endif
+#ifdef CONFIG_VIBRATION_MOTOR_ENABLE
+    printf("Vibration motor commands:\n");
+    printf("  vibrate MS           set motor GPIO high for 1-60000 ms\n");
+    printf("  motor MS             same as vibrate MS\n\n");
 #endif
 }
 
@@ -353,6 +361,27 @@ static void beep_after_solid(uint32_t duration_ms)
     }
 }
 #endif
+
+static void start_alert_outputs(uint32_t buzzer_duration_ms, uint32_t motor_duration_ms)
+{
+#ifdef CONFIG_BUZZER_ENABLE
+    if (buzzer_duration_ms > 0 &&
+        buzzer_beep(CONFIG_SOLID_BUZZER_FREQUENCY_HZ, buzzer_duration_ms) != ESP_OK) {
+        printf("Alert buzzer failed to start\n");
+    }
+#else
+    (void)buzzer_duration_ms;
+#endif
+
+#ifdef CONFIG_VIBRATION_MOTOR_ENABLE
+    if (motor_duration_ms > 0 &&
+        vibration_motor_vibrate(motor_duration_ms) != ESP_OK) {
+        printf("Alert vibration failed to start\n");
+    }
+#else
+    (void)motor_duration_ms;
+#endif
+}
 
 static int parse_long_arg(const char *arg, long min, long max, long *value)
 {
@@ -462,6 +491,24 @@ static void handle_serial_command(char *line)
         return;
     }
 #endif
+#ifdef CONFIG_VIBRATION_MOTOR_ENABLE
+    else if (strcmp(cmd, "vibrate") == 0 || strcmp(cmd, "motor") == 0) {
+        long duration_ms = 0;
+        char *duration_arg = strtok(NULL, " \t\r\n");
+
+        if (parse_long_arg(duration_arg, 1, 60000, &duration_ms) != 0) {
+            printf("Invalid motor duration. Use: vibrate 1..60000\n");
+            return;
+        }
+
+        if (vibration_motor_vibrate((uint32_t)duration_ms) != ESP_OK) {
+            printf("Vibration motor is disabled or failed to vibrate\n");
+            return;
+        }
+        printf("Vibration motor: %ld ms\n", duration_ms);
+        return;
+    }
+#endif
     else if (strcmp(cmd, "off") == 0) {
         s_effect = LIGHT_EFFECT_OFF;
 #ifdef CONFIG_BLINK_LED_STRIP
@@ -490,9 +537,33 @@ static void handle_serial_command(char *line)
     } else if (strcmp(cmd, "rainbow") == 0) {
         s_effect = LIGHT_EFFECT_RAINBOW;
         s_led_index = 0;
-    } else if (strcmp(cmd, "yellow") == 0 || strcmp(cmd, "alert") == 0) {
+    } else if (strcmp(cmd, "yellow") == 0) {
         s_effect = LIGHT_EFFECT_YELLOW_BLINK;
         s_led_index = 0;
+    } else if (strcmp(cmd, "alert") == 0) {
+        uint8_t r, g, b;
+        long buzzer_duration_ms = 200;
+        long motor_duration_ms = 500;
+        char *r_arg = strtok(NULL, " \t\r\n");
+
+        if (r_arg == NULL) {
+            s_effect = LIGHT_EFFECT_YELLOW_BLINK;
+            s_led_index = 0;
+            start_alert_outputs((uint32_t)buzzer_duration_ms, (uint32_t)motor_duration_ms);
+        } else if (parse_byte_arg(r_arg, &r) != 0 ||
+                   parse_byte_arg(strtok(NULL, " \t\r\n"), &g) != 0 ||
+                   parse_byte_arg(strtok(NULL, " \t\r\n"), &b) != 0 ||
+                   parse_long_arg(strtok(NULL, " \t\r\n"), 0, 10000, &buzzer_duration_ms) != 0 ||
+                   parse_long_arg(strtok(NULL, " \t\r\n"), 0, 60000, &motor_duration_ms) != 0) {
+            printf("Invalid alert. Use: alert R G B BEEP_MS VIBRATE_MS\n");
+            return;
+        } else {
+            s_solid_r = r;
+            s_solid_g = g;
+            s_solid_b = b;
+            s_effect = LIGHT_EFFECT_SOLID;
+            start_alert_outputs((uint32_t)buzzer_duration_ms, (uint32_t)motor_duration_ms);
+        }
     } else if (strcmp(cmd, "solid") == 0) {
         uint8_t r, g, b;
         long buzzer_duration_ms = CONFIG_SOLID_BUZZER_DURATION_MS;
@@ -521,8 +592,21 @@ static void handle_serial_command(char *line)
         s_led_state = 1;
     } else if (strcmp(cmd, "blink") == 0 || strcmp(cmd, "auto") == 0) {
         s_effect = LIGHT_EFFECT_AUTO;
-    } else if (strcmp(cmd, "yellow") == 0 || strcmp(cmd, "alert") == 0) {
+    } else if (strcmp(cmd, "yellow") == 0) {
         s_effect = LIGHT_EFFECT_YELLOW_BLINK;
+    } else if (strcmp(cmd, "alert") == 0) {
+        long buzzer_duration_ms = 200;
+        long motor_duration_ms = 500;
+        char *buzzer_arg = strtok(NULL, " \t\r\n");
+        char *motor_arg = strtok(NULL, " \t\r\n");
+
+        if ((buzzer_arg != NULL && parse_long_arg(buzzer_arg, 0, 10000, &buzzer_duration_ms) != 0) ||
+            (motor_arg != NULL && parse_long_arg(motor_arg, 0, 60000, &motor_duration_ms) != 0)) {
+            printf("Invalid alert. Use: alert [0..10000] [0..60000]\n");
+            return;
+        }
+        s_effect = LIGHT_EFFECT_YELLOW_BLINK;
+        start_alert_outputs((uint32_t)buzzer_duration_ms, (uint32_t)motor_duration_ms);
 #endif
     } else {
         printf("Unknown command: %s\n", cmd);
@@ -620,6 +704,7 @@ void app_main(void)
     /* Configure the peripheral according to the LED type */
     configure_led();
     ESP_ERROR_CHECK(buzzer_init());
+    ESP_ERROR_CHECK(vibration_motor_init());
     configure_serial_commands();
 
     while (1) {

@@ -84,4 +84,18 @@ menu "Example Configuration"
         help
             Buzzer duration after a solid color command. Set to 0 to disable the solid command beep.
 
+    config VIBRATION_MOTOR_ENABLE
+        bool "Enable vibration motor"
+        default y
+        help
+            Enable GPIO level control for a vibration motor through a transistor or driver.
+
+    config VIBRATION_MOTOR_GPIO
+        int "Vibration motor GPIO number"
+        depends on VIBRATION_MOTOR_ENABLE
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 3
+        help
+            GPIO number connected to the vibration motor driver signal input.
+
 endmenu

@@ -5,14 +5,19 @@ Usage:
   python3 tools/serial/esp32_light_control.py --list-ports
   python3 tools/serial/esp32_light_control.py --cache-port chase
   python3 tools/serial/esp32_light_control.py -p /dev/cu.usbserial-0001 solid 0 255 0
+  python3 tools/serial/esp32_light_control.py alert 255 0 0 800 1200
+  python3 tools/serial/esp32_light_control.py beep 2000 300
+  python3 tools/serial/esp32_light_control.py vibrate 1200
+  python3 tools/serial/esp32_light_control.py --command-line yellow --command-line "beep 2000 200"
   python3 tools/serial/esp32_light_control.py -p /dev/cu.usbserial-0001 interactive
 
 Notes:
   If --port is omitted, the script probes serial ports for ESP32_LIGHT_OK.
   Use --cache-port after flashing the firmware so hooks can reuse the detected
   port from the hook directory's light_port cache file.
-  Common commands: off, chase, rainbow, yellow, alert, blink, solid R G B,
-  speed MS, raw TEXT.
+  Common commands: off, chase, rainbow, yellow, blink, solid R G B [MS],
+  alert [R G B BEEP_MS VIBRATE_MS], beep [FREQ] [MS], tone FREQ [DUTY],
+  buzzer off, drop [COUNT], vibrate MS, speed MS, raw TEXT.
 """
 
 from __future__ import annotations
@@ -68,16 +73,41 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--quiet", action="store_true", help="Only print errors")
     parser.add_argument("--no-read", action="store_true", help="Do not read ESP32 response after sending")
     parser.add_argument("--list-ports", action="store_true", help="List available serial ports and exit")
+    parser.add_argument("--command-line", action="append", help="Send one complete ESP32 command line; repeat for several")
 
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-    for name in ("help", "off", "auto", "chase", "alternate", "rainbow", "yellow", "alert", "on", "blink"):
+    for name in ("help", "off", "auto", "chase", "alternate", "rainbow", "yellow", "on", "blink"):
         subparsers.add_parser(name, help=f"Send '{name}'")
 
-    solid = subparsers.add_parser("solid", help="Set a solid RGB color")
+    solid = subparsers.add_parser("solid", help="Set a solid RGB color, optionally with a buzzer beep")
     solid.add_argument("r", type=rgb_value, help="Red value 0-255")
     solid.add_argument("g", type=rgb_value, help="Green value 0-255")
     solid.add_argument("b", type=rgb_value, help="Blue value 0-255")
+    solid.add_argument("beep_ms", nargs="?", type=optional_beep_duration, help="Optional buzzer duration, 0-10000 ms")
+
+    alert = subparsers.add_parser("alert", help="Start light alert plus optional buzzer and vibration")
+    alert.add_argument("values", nargs="*", type=int, help="No args, or R G B BEEP_MS VIBRATE_MS")
+
+    beep = subparsers.add_parser("beep", help="Play a timed buzzer beep")
+    beep.add_argument("frequency_hz", nargs="?", type=buzzer_frequency, default=2000, help="Frequency from 20 to 20000 Hz")
+    beep.add_argument("duration_ms", nargs="?", type=beep_duration, default=200, help="Duration from 10 to 10000 ms")
+
+    tone = subparsers.add_parser("tone", help="Keep passive buzzer on")
+    tone.add_argument("frequency_hz", type=buzzer_frequency, help="Frequency from 20 to 20000 Hz")
+    tone.add_argument("duty_percent", nargs="?", type=duty_percent, help="Duty from 1 to 90 percent")
+
+    buzzer = subparsers.add_parser("buzzer", help="Control the buzzer")
+    buzzer.add_argument("action", choices=("off",), help="Buzzer action")
+
+    drop = subparsers.add_parser("drop", help="Play water drop buzzer pattern")
+    drop.add_argument("count", nargs="?", type=drop_count, default=1, help="Repeat count from 1 to 10")
+
+    vibrate = subparsers.add_parser("vibrate", help="Run the vibration motor")
+    vibrate.add_argument("duration_ms", type=vibration_duration, help="Duration from 1 to 60000 ms")
+
+    motor = subparsers.add_parser("motor", help="Alias for vibrate")
+    motor.add_argument("duration_ms", type=vibration_duration, help="Duration from 1 to 60000 ms")
 
     speed = subparsers.add_parser("speed", help="Set effect delay in milliseconds")
     speed.add_argument("ms", type=speed_value, help="Delay from 10 to 5000 ms")
@@ -95,6 +125,49 @@ def rgb_value(value: str) -> int:
 
 def speed_value(value: str) -> int:
     return ranged_int(value, 10, 5000, "speed")
+
+
+def buzzer_frequency(value: str) -> int:
+    return ranged_int(value, 20, 20000, "buzzer frequency")
+
+
+def beep_duration(value: str) -> int:
+    return ranged_int(value, 10, 10000, "beep duration")
+
+
+def optional_beep_duration(value: str) -> int:
+    return ranged_int(value, 0, 10000, "beep duration")
+
+
+def duty_percent(value: str) -> int:
+    return ranged_int(value, 1, 90, "duty percent")
+
+
+def drop_count(value: str) -> int:
+    return ranged_int(value, 1, 10, "drop count")
+
+
+def vibration_duration(value: str) -> int:
+    return ranged_int(value, 1, 60000, "vibration duration")
+
+
+def alert_values(values: list[int]) -> list[int]:
+    if not values:
+        return []
+    if len(values) != 5:
+        raise argparse.ArgumentTypeError("alert expects no args, or R G B BEEP_MS VIBRATE_MS")
+
+    ranges = (
+        ("red value", values[0], 0, 255),
+        ("green value", values[1], 0, 255),
+        ("blue value", values[2], 0, 255),
+        ("beep duration", values[3], 0, 10000),
+        ("vibration duration", values[4], 0, 60000),
+    )
+    for name, parsed, minimum, maximum in ranges:
+        if parsed < minimum or parsed > maximum:
+            raise argparse.ArgumentTypeError(f"{name} must be between {minimum} and {maximum}")
+    return values
 
 
 def ranged_int(value: str, minimum: int, maximum: int, name: str) -> int:
@@ -244,10 +317,31 @@ def ensure_pyserial() -> None:
 
 
 def command_text(args: argparse.Namespace) -> str | None:
-    if args.command in {"help", "off", "auto", "chase", "alternate", "rainbow", "yellow", "alert", "on", "blink"}:
+    if args.command in {"help", "off", "auto", "chase", "alternate", "rainbow", "yellow", "on", "blink"}:
         return args.command
     if args.command == "solid":
-        return f"solid {args.r} {args.g} {args.b}"
+        text = f"solid {args.r} {args.g} {args.b}"
+        if args.beep_ms is not None:
+            text += f" {args.beep_ms}"
+        return text
+    if args.command == "alert":
+        values = alert_values(args.values)
+        if not values:
+            return "alert"
+        return "alert " + " ".join(str(value) for value in values)
+    if args.command == "beep":
+        return f"beep {args.frequency_hz} {args.duration_ms}"
+    if args.command == "tone":
+        text = f"tone {args.frequency_hz}"
+        if args.duty_percent is not None:
+            text += f" {args.duty_percent}"
+        return text
+    if args.command == "buzzer":
+        return f"buzzer {args.action}"
+    if args.command == "drop":
+        return f"drop {args.count}"
+    if args.command in {"vibrate", "motor"}:
+        return f"{args.command} {args.duration_ms}"
     if args.command == "speed":
         return f"speed {args.ms}"
     if args.command == "raw":
@@ -332,9 +426,18 @@ def main() -> int:
         list_serial_ports()
         return 0
 
-    if args.command is None:
+    if not args.command_line and args.command is None:
         parser.print_help()
         return 2
+
+    text = None
+    if not args.command_line and args.command != "interactive":
+        try:
+            text = command_text(args)
+        except argparse.ArgumentTypeError as exc:
+            parser.error(str(exc))
+        if text is None:
+            parser.error("unknown command")
 
     port = args.port or read_cached_port() or find_esp32_port(args.baud, quiet=args.quiet)
     if args.cache_port:
@@ -342,12 +445,12 @@ def main() -> int:
 
     connection = open_serial(port, args.baud)
     with connection:
-        if args.command == "interactive":
+        if args.command_line:
+            for command_line in args.command_line:
+                send_command(connection, command_line, read_response=not args.no_read, quiet=args.quiet)
+        elif args.command == "interactive":
             interactive(connection, read_response=not args.no_read, quiet=args.quiet)
         else:
-            text = command_text(args)
-            if text is None:
-                parser.error("unknown command")
             send_command(connection, text, read_response=not args.no_read, quiet=args.quiet)
 
     return 0
