@@ -285,6 +285,14 @@ INDEX_HTML = r"""<!doctype html>
         <h1>ESP32 Events</h1>
         <div class="subtle" id="configPath"></div>
       </div>
+      <div class="field">
+        <label id="toolLabel">Tool</label>
+        <select id="toolSelect"></select>
+      </div>
+      <div class="add-row">
+        <input id="newTool" placeholder="new_tool" autocomplete="off">
+        <button class="icon" id="addTool" title="Add tool">+</button>
+      </div>
       <div class="add-row">
         <input id="newEvent" placeholder="NewEventName" autocomplete="off">
         <button class="icon" id="addEvent" title="Add event">+</button>
@@ -364,6 +372,9 @@ INDEX_HTML = r"""<!doctype html>
         newEventPlaceholder: "NewEventName",
         addEventTitle: "Add event",
         languageTitle: "Language",
+        tool: "Tool",
+        newToolPlaceholder: "new_tool",
+        addToolTitle: "Add tool",
         rawJson: "Raw JSON",
         delete: "Delete",
         save: "Save",
@@ -371,13 +382,16 @@ INDEX_HTML = r"""<!doctype html>
         loaded: "Loaded",
         saved: "Saved",
         eventAdded: "Event added",
+        toolAdded: "Tool added",
         eventDeleted: "Event deleted",
+        enterToolName: "Enter a tool name",
+        toolExists: "Tool already exists",
         enterEventName: "Enter an event name",
         eventExists: "Event already exists",
         deleteConfirm: "Delete {event}?",
         rawApplied: "Raw JSON applied",
         rootObject: "Root must be an object",
-        eventsObject: "events must be an object",
+        eventsObject: "tool profile must be an object of events",
         enabled: "enabled",
         mode: "Mode",
         generatedCommand: "Generated command",
@@ -415,6 +429,9 @@ INDEX_HTML = r"""<!doctype html>
         newEventPlaceholder: "新事件名称",
         addEventTitle: "添加事件",
         languageTitle: "语言",
+        tool: "工具",
+        newToolPlaceholder: "新工具名称",
+        addToolTitle: "添加工具",
         rawJson: "原始 JSON",
         delete: "删除",
         save: "保存",
@@ -422,13 +439,16 @@ INDEX_HTML = r"""<!doctype html>
         loaded: "已加载",
         saved: "已保存",
         eventAdded: "事件已添加",
+        toolAdded: "工具已添加",
         eventDeleted: "事件已删除",
+        enterToolName: "请输入工具名称",
+        toolExists: "工具已存在",
         enterEventName: "请输入事件名称",
         eventExists: "事件已存在",
         deleteConfirm: "删除 {event}？",
         rawApplied: "原始 JSON 已应用",
         rootObject: "根节点必须是对象",
-        eventsObject: "events 必须是对象",
+        eventsObject: "工具配置必须是事件对象",
         enabled: "启用",
         mode: "模式",
         generatedCommand: "生成的命令",
@@ -460,7 +480,8 @@ INDEX_HTML = r"""<!doctype html>
       },
     };
 
-    let config = { default: { light: { command: ["off"] } }, events: {} };
+    let config = { codex: {} };
+    let selectedTool = "";
     let selectedEvent = "";
     let rawVisible = false;
     let language = localStorage.getItem("esp32EventConfigLanguage") || "en";
@@ -472,6 +493,7 @@ INDEX_HTML = r"""<!doctype html>
     const rawWrap = document.getElementById("rawWrap");
     const rawJson = document.getElementById("rawJson");
     const languageSelect = document.getElementById("languageSelect");
+    const toolSelect = document.getElementById("toolSelect");
 
     function t(key, params = {}) {
       let text = (translations[language] || translations.en)[key] || translations.en[key] || key;
@@ -486,6 +508,9 @@ INDEX_HTML = r"""<!doctype html>
       document.title = t("pageTitle");
       document.querySelector("aside h1").textContent = t("appTitle");
       document.querySelector(".topbar .subtle").textContent = t("subtitle");
+      document.getElementById("toolLabel").textContent = t("tool");
+      document.getElementById("newTool").placeholder = t("newToolPlaceholder");
+      document.getElementById("addTool").title = t("addToolTitle");
       document.getElementById("newEvent").placeholder = t("newEventPlaceholder");
       document.getElementById("addEvent").title = t("addEventTitle");
       languageSelect.title = t("languageTitle");
@@ -669,27 +694,44 @@ INDEX_HTML = r"""<!doctype html>
     }
 
     function ensureEvent(name) {
-      if (!config.events) config.events = {};
-      if (!config.events[name]) config.events[name] = {};
-      return config.events[name];
+      if (!selectedTool) return {};
+      if (!config[selectedTool]) config[selectedTool] = {};
+      if (!config[selectedTool][name]) config[selectedTool][name] = {};
+      return config[selectedTool][name];
     }
 
     function sectionCount(entry) {
       return sections.filter(section => entry && entry[section.key]).length;
     }
 
+    function renderTools() {
+      const tools = Object.keys(config || {}).sort();
+      toolSelect.innerHTML = "";
+      if (!selectedTool && tools.length) selectedTool = tools[0];
+      if (selectedTool && !config[selectedTool]) selectedTool = tools[0] || "";
+
+      for (const tool of tools) {
+        const option = document.createElement("option");
+        option.value = tool;
+        option.textContent = tool;
+        toolSelect.appendChild(option);
+      }
+      toolSelect.value = selectedTool;
+    }
+
     function renderEvents() {
-      const names = Object.keys(config.events || {}).sort();
+      const toolEvents = selectedTool && config[selectedTool] ? config[selectedTool] : {};
+      const names = Object.keys(toolEvents).sort();
       eventList.innerHTML = "";
       if (!selectedEvent && names.length) selectedEvent = names[0];
-      if (selectedEvent && !config.events[selectedEvent]) selectedEvent = names[0] || "";
+      if (selectedEvent && !toolEvents[selectedEvent]) selectedEvent = names[0] || "";
 
       for (const name of names) {
         const button = document.createElement("button");
         button.className = "event-button" + (name === selectedEvent ? " active" : "");
         button.innerHTML = `<span class="event-name"></span><span class="count"></span>`;
         button.querySelector(".event-name").textContent = name;
-        button.querySelector(".count").textContent = sectionCount(config.events[name]);
+        button.querySelector(".count").textContent = sectionCount(toolEvents[name]);
         button.addEventListener("click", () => {
           selectedEvent = name;
           render();
@@ -799,6 +841,7 @@ INDEX_HTML = r"""<!doctype html>
 
     function render() {
       renderStaticText();
+      renderTools();
       renderEvents();
       renderEditor();
       renderRaw();
@@ -828,19 +871,40 @@ INDEX_HTML = r"""<!doctype html>
       const input = document.getElementById("newEvent");
       const name = input.value.trim();
       if (!name) return setStatus(t("enterEventName"), "error");
-      if (!config.events) config.events = {};
-      if (config.events[name]) return setStatus(t("eventExists"), "error");
-      config.events[name] = { light: { command: ["yellow"] } };
+      if (!selectedTool) return setStatus(t("enterToolName"), "error");
+      if (!config[selectedTool]) config[selectedTool] = {};
+      if (config[selectedTool][name]) return setStatus(t("eventExists"), "error");
+      config[selectedTool][name] = { light: { command: ["yellow"] } };
       input.value = "";
       selectedEvent = name;
       render();
       setStatus(t("eventAdded"));
     });
 
+    document.getElementById("addTool").addEventListener("click", () => {
+      const input = document.getElementById("newTool");
+      const name = input.value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+      if (!name) return setStatus(t("enterToolName"), "error");
+      if (config[name]) return setStatus(t("toolExists"), "error");
+      config[name] = {};
+      input.value = "";
+      selectedTool = name;
+      selectedEvent = "";
+      render();
+      setStatus(t("toolAdded"));
+    });
+
+    toolSelect.addEventListener("change", () => {
+      selectedTool = toolSelect.value;
+      selectedEvent = "";
+      render();
+      setStatus("");
+    });
+
     document.getElementById("deleteEvent").addEventListener("click", () => {
       if (!selectedEvent) return;
       if (!confirm(t("deleteConfirm", { event: selectedEvent }))) return;
-      delete config.events[selectedEvent];
+      if (selectedTool && config[selectedTool]) delete config[selectedTool][selectedEvent];
       selectedEvent = "";
       render();
       setStatus(t("eventDeleted"));
@@ -866,11 +930,14 @@ INDEX_HTML = r"""<!doctype html>
       try {
         const next = JSON.parse(rawJson.value);
         if (!next || typeof next !== "object" || Array.isArray(next)) throw new Error(t("rootObject"));
-        if (!next.events || typeof next.events !== "object" || Array.isArray(next.events)) {
-          throw new Error(t("eventsObject"));
+        for (const [tool, events] of Object.entries(next)) {
+          if (!events || typeof events !== "object" || Array.isArray(events)) {
+            throw new Error(`${tool}: ${t("eventsObject")}`);
+          }
         }
         config = next;
-        selectedEvent = Object.keys(config.events).sort()[0] || "";
+        selectedTool = Object.keys(config).sort()[0] || "";
+        selectedEvent = selectedTool ? Object.keys(config[selectedTool] || {}).sort()[0] || "" : "";
         render();
         setStatus(t("rawApplied"));
       } catch (error) {
@@ -896,17 +963,15 @@ def build_parser() -> argparse.ArgumentParser:
 def validate_config(data: Any) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("Root JSON value must be an object")
-    events = data.get("events")
-    if not isinstance(events, dict):
-        raise ValueError("'events' must be an object")
-
-    for event_name, entry in events.items():
-        if not isinstance(event_name, str) or not event_name:
-            raise ValueError("Event names must be non-empty strings")
-        validate_entry(entry, f"events.{event_name}")
-
-    if "default" in data:
-        validate_entry(data["default"], "default")
+    for tool_name, events in data.items():
+        if not isinstance(tool_name, str) or not tool_name:
+            raise ValueError("Tool names must be non-empty strings")
+        if not isinstance(events, dict) or "command" in events:
+            raise ValueError(f"{tool_name} must be an object containing event names")
+        for event_name, entry in events.items():
+            if not isinstance(event_name, str) or not event_name:
+                raise ValueError(f"{tool_name} event names must be non-empty strings")
+            validate_entry(entry, f"{tool_name}.{event_name}")
     return data
 
 

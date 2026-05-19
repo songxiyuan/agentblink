@@ -2,13 +2,12 @@
 """Run ESP32 light controller commands from an event configuration file.
 
 Examples:
-  python3 tools/serial/esp32_event_control.py PermissionRequest
+  python3 tools/serial/esp32_event_control.py --tool codex PermissionRequest
   printf '%s' '{"hook_event_name":"PermissionRequest"}' | python3 tools/serial/esp32_event_control.py --stdin
-  python3 tools/serial/esp32_event_control.py --config my_events.json UserPromptSubmit
+  python3 tools/serial/esp32_event_control.py --tool claude_code --config my_events.json UserPromptSubmit
 
-The config maps event names to esp32_light_control.py arguments. The default
-PermissionRequest mapping explicitly sends a yellow breathing light command,
-a short buzzer beep command, and a short vibration command.
+The config maps tool names to event names to esp32_light_control.py arguments.
+For example: config["codex"]["PermissionRequest"].
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("event", nargs="?", help="Event name, for example PermissionRequest")
+    parser.add_argument("--tool", default="codex", help="Tool profile in the config, for example codex or claude_code")
     parser.add_argument(
         "-c",
         "--config",
@@ -68,24 +68,39 @@ def load_config(path: Path) -> dict[str, Any]:
 
     if not isinstance(data, dict):
         raise SystemExit(f"{path} must contain a JSON object")
-    events = data.get("events", {})
-    if not isinstance(events, dict):
-        raise SystemExit(f"{path}: 'events' must be a JSON object")
+    for tool_name, events in data.items():
+        if not isinstance(tool_name, str) or not tool_name:
+            raise SystemExit(f"{path}: tool names must be non-empty strings")
+        if not isinstance(events, dict):
+            raise SystemExit(f"{path}: tool profile {tool_name!r} must be a JSON object")
     return data
 
 
-def event_from_stdin() -> str | None:
+def payload_from_stdin() -> dict[str, Any]:
     raw = sys.stdin.read()
     if not raw.strip():
-        return None
+        return {}
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise SystemExit(f"Failed to parse stdin JSON: {exc}") from exc
     if not isinstance(payload, dict):
         raise SystemExit("stdin JSON must be an object")
+    return payload
+
+
+def event_from_payload(payload: dict[str, Any]) -> str | None:
     event = payload.get("hook_event_name") or payload.get("event") or payload.get("name")
     return str(event) if event else None
+
+
+def tool_from_payload(payload: dict[str, Any], fallback: str) -> str:
+    tool = payload.get("tool") or payload.get("client") or payload.get("app") or payload.get("source")
+    return normalize_tool_name(str(tool)) if tool else fallback
+
+
+def normalize_tool_name(value: str) -> str:
+    return value.strip().lower().replace("-", "_").replace(" ", "_")
 
 
 def normalize_command(entry: object, config_path: Path) -> list[str]:
@@ -126,22 +141,25 @@ def command_lines_for_entry(entry: object, config_path: Path) -> list[str]:
     return command_lines
 
 
-def command_lines_for_event(config: dict[str, Any], event: str, config_path: Path) -> list[str]:
-    events = config.get("events", {})
+def command_lines_for_event(config: dict[str, Any], tool: str, event: str, config_path: Path) -> list[str]:
+    events = config.get(tool)
+    if not isinstance(events, dict):
+        available = ", ".join(sorted(config)) or "none"
+        raise SystemExit(f"No tool profile {tool!r} in {config_path}. Available: {available}")
     entry = events.get(event)
     if entry is None:
-        entry = config.get("default")
-    if entry is None:
-        raise SystemExit(f"No command configured for event {event!r}, and no default is set")
+        raise SystemExit(f"No command configured for tool {tool!r}, event {event!r}")
     return command_lines_for_entry(entry, config_path)
 
 
 def list_events(config: dict[str, Any]) -> None:
-    events = config.get("events", {})
-    for event in sorted(events):
-        entry = events[event]
-        command_lines = command_lines_for_entry(entry, DEFAULT_CONFIG)
-        print(f"{event}\t{'; '.join(command_lines)}")
+    for tool in sorted(config):
+        events = config[tool]
+        if not isinstance(events, dict):
+            continue
+        for event in sorted(events):
+            command_lines = command_lines_for_entry(events[event], DEFAULT_CONFIG)
+            print(f"{tool}\t{event}\t{'; '.join(command_lines)}")
 
 
 def control_args(args: argparse.Namespace, command_lines: list[str]) -> list[str]:
@@ -172,11 +190,17 @@ def main() -> int:
         list_events(config)
         return 0
 
-    event = event_from_stdin() if args.stdin else args.event
+    if args.stdin:
+        payload = payload_from_stdin()
+        event = event_from_payload(payload)
+        tool = tool_from_payload(payload, normalize_tool_name(args.tool))
+    else:
+        event = args.event
+        tool = normalize_tool_name(args.tool)
     if not event:
         parser.error("event is required unless --stdin provides hook_event_name")
 
-    command_lines = command_lines_for_event(config, event, config_path)
+    command_lines = command_lines_for_event(config, tool, event, config_path)
     invocation = control_args(args, command_lines)
     if args.dry_run:
         print(" ".join(shlex.quote(part) for part in invocation))
