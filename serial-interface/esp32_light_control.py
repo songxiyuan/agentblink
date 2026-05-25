@@ -27,6 +27,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from typing import Any, Optional
 
 try:
     import serial
@@ -164,14 +165,14 @@ def list_serial_ports() -> None:
         print(f"{port.device}\t{description}")
 
 
-def port_is_ignored(port) -> bool:
+def port_is_ignored(port: Any) -> bool:
     device = (port.device or "").lower()
     description = (port.description or "").lower()
     text = f"{device} {description}"
     return "bluetooth" in text or "debug-console" in text
 
 
-def score_serial_port(port) -> int:
+def score_serial_port(port: Any) -> int:
     device = (port.device or "").lower()
     description = (port.description or "").lower()
     manufacturer = (port.manufacturer or "").lower()
@@ -419,7 +420,8 @@ def main() -> int:
         elif args.command == "interactive":
             interactive(connection, read_response=not args.no_read, quiet=args.quiet)
         else:
-            send_command(connection, text, read_response=not args.no_read, quiet=args.quiet)
+            if text is not None:
+                send_command(connection, text, read_response=not args.no_read, quiet=args.quiet)
 
     return 0
 

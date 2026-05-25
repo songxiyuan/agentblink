@@ -105,7 +105,7 @@ def normalize_tool_name(value: str) -> str:
 
 def normalize_command(entry: object, config_path: Path) -> list[str]:
     if isinstance(entry, list):
-        command = entry
+        command: list[str] | None = entry
     elif isinstance(entry, str):
         command = entry.split()
     elif isinstance(entry, dict):
