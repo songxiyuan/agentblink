@@ -16,5 +16,6 @@
     "--query-driver=**",
     "--compile-commands-dir=/Users/nomis/Documents/vscode/esp32/blink/firmware/build"
   ],
-  "idf.flashType": "UART"
+  "idf.flashType": "UART",
+  "python-envs.defaultEnvManager": "ms-python.python:system"
 }
