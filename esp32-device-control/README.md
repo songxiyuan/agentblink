@@ -121,4 +121,4 @@ COMMAND [ARG1] [ARG2] ...
 
 ## Contributing
 
-See the main project [CONTRIBUTING.md](../../CONTRIBUTING.md) for guidelines on submitting issues and pull requests.
+See the main project [CONTRIBUTING.md](../docs/CONTRIBUTING.md) for guidelines on submitting issues and pull requests.
