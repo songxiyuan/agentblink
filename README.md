@@ -1,179 +1,93 @@
+# agentblink
+
+Visual feedback for AI coding assistants through ESP32-based status lights.
+
+## Features
+
+- **AI Tool Integration** - Automatic status lights for Codex and Claude Code
+- **Multiple LED Effects** - Chase, rainbow, breathing, solid colors, and more
+- **Audio & Haptic Feedback** - Buzzer and vibration motor support
+- **Easy Installation** - Global hooks for seamless AI tool integration
+- **Cross-Platform** - Works on macOS, Linux, and Windows (WSL)
+- **Modular Design** - Use components independently or together
+
+## Quick Start
+
+### For AI Tool Users (5 minutes)
+
+```bash
+# 1. Flash firmware to ESP32
+cd esp32-device-control/firmware
+idf.py set-target esp32
+idf.py flash
+
+# 2. Install serial interface
+cd ../../serial-interface
+python3 install.py
+
+# 3. Install AI tool hooks
+cd ../ai-status-lights
+python3 scripts/install_claude_hooks.py
+
+# 4. Test the light
+python3 ../serial-interface/esp32_light_control.py rainbow
+```
+
+### For Developers
+
+See [Getting Started](docs/GETTING_STARTED.md) for detailed setup instructions for different audiences.
+
+## Modules
+
+agentblink consists of three independent modules:
+
+### ESP32 Device Control
+Hardware abstraction for ESP32-based status lights. Provides firmware with support for addressable LED strips, GPIO LEDs, buzzers, and vibration motors.
+
+**Location:** `esp32-device-control/`  
+**See:** [README](esp32-device-control/README.md)
+
+### Serial Interface
+Python library for communicating with ESP32 devices. Includes command-line tools and Python API for device control and auto-detection.
+
+**Location:** `serial-interface/`  
+**See:** [README](serial-interface/README.md)
+
+### AI Status Lights
+Integration layer for AI coding assistants. Maps AI tool lifecycle events to visual feedback through hook scripts.
+
+**Location:** `ai-status-lights/`  
+**See:** [README](ai-status-lights/README.md)
+
+## Documentation
+
+- **[Getting Started](docs/GETTING_STARTED.md)** - Setup guides for different audiences
+- **[Architecture](docs/ARCHITECTURE.md)** - System design and module interactions
+- **[Contributing](docs/CONTRIBUTING.md)** - Development guidelines and contribution process
+
+## Supported Hardware
+
 | Supported Targets | ESP32 | ESP32-C2 | ESP32-C3 | ESP32-C5 | ESP32-C6 | ESP32-C61 | ESP32-H2 | ESP32-H21 | ESP32-H4 | ESP32-P4 | ESP32-S2 | ESP32-S3 |
 | ----------------- | ----- | -------- | -------- | -------- | -------- | --------- | -------- | --------- | -------- | -------- | -------- | -------- |
 
-# Blink Example
+**Optional Components:**
+- Addressable LED strip (WS2812B/NeoPixel)
+- Passive buzzer module
+- Vibration motor
 
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
+## Examples
 
-This example demonstrates how to blink a LED by using the GPIO driver or using the [led_strip](https://components.espressif.com/component/espressif/led_strip) library if the LED is addressable e.g. [WS2812](https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf). The `led_strip` library is installed via [component manager](firmware/main/idf_component.yml).
+See the `examples/` directory for complete working examples:
+- Basic LED control
+- Serial communication patterns
+- Hook integration examples
 
-## How to Use Example
+## License
 
-The ESP-IDF project lives in `firmware/`. Before project configuration and build, enter that directory and set the correct chip target:
+This project is licensed under the MIT License. See LICENSE file for details.
 
-```sh
-cd firmware
-idf.py set-target <chip_name>
-```
+## Support
 
-### Hardware Required
-
-* A development board with normal LED or addressable LED on-board (e.g., ESP32-S3-DevKitC, ESP32-C6-DevKitC etc.)
-* A USB cable for Power supply and programming
-
-See [Development Boards](https://www.espressif.com/en/products/devkits) for more information about it.
-
-### Configure the Project
-
-Open the project configuration menu from `firmware/`:
-
-```sh
-idf.py menuconfig
-```
-
-In the `Example Configuration` menu:
-
-* Select the LED type in the `Blink LED type` option.
-  * Use `GPIO` for regular LED
-  * Use `LED strip` for addressable LED
-* If the LED type is `LED strip`, select the backend peripheral
-  * `RMT` is only available for ESP targets with RMT peripheral supported
-  * `SPI` is available for all ESP targets
-* Set the GPIO number used for the signal in the `Blink GPIO number` option.
-* Set the blinking period in the `Blink period in ms` option.
-
-### Build and Flash
-
-From `firmware/`, run `idf.py -p PORT flash monitor` to build, flash and monitor the project.
-
-(To exit the serial monitor, type ``Ctrl-]``.)
-
-### Serial Commands
-
-After flashing, type a command in the serial monitor and press Enter.
-
-For LED strip mode:
-
-* `help` - show available commands
-* `probe` - identify this ESP32 controller for the Python script
-* `off` - turn all LEDs off
-* `auto` - cycle through chase, alternate, and rainbow effects
-* `chase` - running light with a fading tail
-* `alternate` - alternating orange/blue LEDs
-* `rainbow` - flowing rainbow effect
-* `yellow` - blinking yellow light
-* `solid R G B` - solid color, for example `solid 255 0 0`
-* `speed MS` - animation delay from 10 to 5000 ms, for example `speed 120`
-
-For GPIO LED mode:
-
-* `help`
-* `probe`
-* `off`
-* `on`
-* `blink`
-* `yellow`
-* `speed MS`
-
-### Python Serial Control
-
-Install the Python serial dependency:
-
-```sh
-python3 -m pip install pyserial
-```
-
-Find the ESP32 serial port:
-
-```sh
-python3 tools/serial/esp32_light_control.py --list-ports
-```
-
-Send commands from Python:
-
-```sh
-python3 tools/serial/esp32_light_control.py rainbow
-python3 tools/serial/esp32_light_control.py solid 255 0 0
-python3 tools/serial/esp32_light_control.py speed 120
-python3 tools/serial/esp32_light_control.py off
-```
-
-The script probes each serial port and selects the one that responds with the ESP32 light controller signature. Flash the latest firmware first so the `probe` command is available. If needed, specify the port manually:
-
-```sh
-python3 tools/serial/esp32_light_control.py -p /dev/cu.usbserial-0001 chase
-```
-
-For a manual prompt:
-
-```sh
-python3 tools/serial/esp32_light_control.py interactive
-```
-
-### AI Status Lights
-
-Project helper code is organized as:
-
-* `tools/serial/` - Python serial control for the ESP32 light firmware
-* `firmware/` - ESP-IDF firmware project files
-* `ai/hooks/` - Codex and Claude Code lifecycle hook scripts
-* `scripts/` - install and maintenance scripts
-
-Install or update the global Codex hooks:
-
-```sh
-./scripts/install_codex_hooks.py
-```
-
-Install or update the global Claude Code hooks:
-
-```sh
-./scripts/install_claude_hooks.py
-```
-
-Install both:
-
-```sh
-./scripts/install_codex_hooks.py --target all
-```
-
-Use `--no-deps` if `pyserial` is already available to the Python runtime used by the hook.
-
-Codex status lights are installed globally in `~/.codex/hooks.json` and call scripts in `~/.codex/hooks/`.
-Claude Code status lights are installed globally in `~/.claude/settings.json` and call scripts in `~/.claude/hooks/`.
-
-* Task running: `chase`
-* Task finished: solid green
-* Approval or input needed: yellow breathing light
-* Session start or other idle state: off
-
-Each global hook caches the detected serial port in its hook directory as `light_port`, so it works from any project after the first successful probe.
-
-See the [Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/latest/get-started/index.html) for full steps to configure and use ESP-IDF to build projects.
-
-## Example Output
-
-As you run the example, you will see the LED blinking, according to the previously defined period. For the addressable LED, you can also change the LED color by setting the `led_strip_set_pixel(led_strip, 0, 16, 16, 16);` (LED Strip, Pixel Number, Red, Green, Blue) with values from 0 to 255 in the [source file](firmware/main/blink_main.c).
-
-```text
-I (315) example: Example configured to blink addressable LED!
-I (325) example: Turning the LED OFF!
-I (1325) example: Turning the LED ON!
-I (2325) example: Turning the LED OFF!
-I (3325) example: Turning the LED ON!
-I (4325) example: Turning the LED OFF!
-I (5325) example: Turning the LED ON!
-I (6325) example: Turning the LED OFF!
-I (7325) example: Turning the LED ON!
-I (8325) example: Turning the LED OFF!
-```
-
-Note: The color order could be different according to the LED model.
-
-The pixel number indicates the pixel position in the LED strip. For a single LED, use 0.
-
-## Troubleshooting
-
-* If the LED isn't blinking, check the GPIO or the LED type selection in the `Example Configuration` menu.
-
-For any technical queries, please open an [issue](https://github.com/espressif/esp-idf/issues) on GitHub. We will get back to you soon.
+- **Issues**: [GitHub Issues](https://github.com/yourusername/agentblink/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/agentblink/discussions)
+- **Documentation**: See `docs/` directory
