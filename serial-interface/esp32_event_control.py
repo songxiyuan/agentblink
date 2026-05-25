@@ -27,6 +27,11 @@ DEFAULT_CONTROL_SCRIPT = SCRIPT_DIR / "esp32_light_control.py"
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build and return the argument parser for the event control script.
+
+    Returns:
+        argparse.ArgumentParser: Configured parser with all command-line arguments.
+    """
     parser = argparse.ArgumentParser(
         description="Map an event name to ESP32 light/buzzer/vibration commands.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -58,6 +63,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def load_config(path: Path) -> dict[str, Any]:
+    """Load and validate the event configuration from a JSON file.
+
+    Args:
+        path: Path to the JSON configuration file.
+
+    Returns:
+        dict[str, Any]: Configuration dictionary mapping tool names to event mappings.
+
+    Raises:
+        SystemExit: If the file cannot be read, parsed, or is invalid.
+    """
     try:
         with path.open("r", encoding="utf-8") as file:
             data = json.load(file)
@@ -77,6 +93,14 @@ def load_config(path: Path) -> dict[str, Any]:
 
 
 def payload_from_stdin() -> dict[str, Any]:
+    """Read and parse a JSON payload from standard input.
+
+    Returns:
+        dict[str, Any]: Parsed JSON object, or empty dict if stdin is empty.
+
+    Raises:
+        SystemExit: If stdin contains invalid JSON or is not a JSON object.
+    """
     raw = sys.stdin.read()
     if not raw.strip():
         return {}
@@ -90,20 +114,65 @@ def payload_from_stdin() -> dict[str, Any]:
 
 
 def event_from_payload(payload: dict[str, Any]) -> str | None:
+    """Extract the event name from a hook payload.
+
+    Checks multiple possible keys: hook_event_name, event, and name.
+
+    Args:
+        payload: Dictionary containing hook payload data.
+
+    Returns:
+        str | None: The event name if found, None otherwise.
+    """
     event = payload.get("hook_event_name") or payload.get("event") or payload.get("name")
     return str(event) if event else None
 
 
 def tool_from_payload(payload: dict[str, Any], fallback: str) -> str:
+    """Extract the tool name from a hook payload.
+
+    Checks multiple possible keys: tool, client, app, and source.
+
+    Args:
+        payload: Dictionary containing hook payload data.
+        fallback: Default tool name to use if not found in payload.
+
+    Returns:
+        str: The normalized tool name.
+    """
     tool = payload.get("tool") or payload.get("client") or payload.get("app") or payload.get("source")
     return normalize_tool_name(str(tool)) if tool else fallback
 
 
 def normalize_tool_name(value: str) -> str:
+    """Normalize a tool name to a standard format.
+
+    Converts to lowercase and replaces hyphens and spaces with underscores.
+
+    Args:
+        value: The tool name to normalize.
+
+    Returns:
+        str: The normalized tool name.
+    """
     return value.strip().lower().replace("-", "_").replace(" ", "_")
 
 
 def normalize_command(entry: object, config_path: Path) -> list[str]:
+    """Normalize a command entry to a list of string arguments.
+
+    Accepts command as a list, space-separated string, or dict with 'command' key.
+
+    Args:
+        entry: The command entry to normalize (list, str, or dict).
+        config_path: Path to the config file (used for error messages).
+
+    Returns:
+        list[str]: List of command arguments as strings.
+
+    Raises:
+        SystemExit: If the entry is invalid or doesn't contain a non-empty command.
+    """
     if isinstance(entry, list):
         command: list[str] | None = entry
     elif isinstance(entry, str):
@@ -121,6 +190,20 @@ def normalize_command(entry: object, config_path: Path) -> list[str]:
 
 
 def command_lines_for_entry(entry: object, config_path: Path) -> list[str]:
+    """Convert a config entry to a list of command lines.
+
+    Handles entries with a single 'command' or separate 'light', 'buzzer', 'vibration' sections.
+
+    Args:
+        entry: The config entry (can be list, str, or dict).
+        config_path: Path to the config file (used for error messages).
+
+    Returns:
+        list[str]: List of command lines to execute.
+
+    Raises:
+        SystemExit: If the entry is invalid or doesn't define any commands.
+    """
     if not isinstance(entry, dict):
         return [" ".join(normalize_command(entry, config_path))]
 
@@ -142,6 +225,20 @@ def command_lines_for_entry(entry: object, config_path: Path) -> list[str]:
 
 
 def command_lines_for_event(config: dict[str, Any], tool: str, event: str, config_path: Path) -> list[str]:
+    """Get command lines for a specific tool and event from the config.
+
+    Args:
+        config: The loaded configuration dictionary.
+        tool: The tool profile name.
+        event: The event name.
+        config_path: Path to the config file (used for error messages).
+
+    Returns:
+        list[str]: List of command lines to execute.
+
+    Raises:
+        SystemExit: If the tool profile or event is not found in the config.
+    """
     events = config.get(tool)
     if not isinstance(events, dict):
         available = ", ".join(sorted(config)) or "none"
@@ -153,6 +250,11 @@ def command_lines_for_event(config: dict[str, Any], tool: str, event: str, confi
 
 
 def list_events(config: dict[str, Any]) -> None:
+    """Print all configured events in a tab-separated format.
+
+    Args:
+        config: The loaded configuration dictionary.
+    """
     for tool in sorted(config):
         events = config[tool]
         if not isinstance(events, dict):
@@ -163,6 +265,15 @@ def list_events(config: dict[str, Any]) -> None:
 
 
 def control_args(args: argparse.Namespace, command_lines: list[str]) -> list[str]:
+    """Build the argument list for invoking esp32_light_control.py.
+
+    Args:
+        args: Parsed command-line arguments.
+        command_lines: List of command lines to pass to the control script.
+
+    Returns:
+        list[str]: Complete argument list for subprocess.run().
+    """
     control_script = args.control_script.resolve()
     result = [sys.executable, str(control_script)]
     if args.port:
@@ -181,6 +292,14 @@ def control_args(args: argparse.Namespace, command_lines: list[str]) -> list[str
 
 
 def main() -> int:
+    """Main entry point for the event control script.
+
+    Parses arguments, loads the config, resolves the event to commands,
+    and invokes esp32_light_control.py.
+
+    Returns:
+        int: Exit code (0 for success, non-zero for errors).
+    """
     parser = build_parser()
     args = parser.parse_args()
     config_path = args.config.resolve()

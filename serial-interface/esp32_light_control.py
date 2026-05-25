@@ -57,12 +57,24 @@ ESP32_PORT_KEYWORDS = (
 
 @dataclass
 class PortCandidate:
+    """Represents a candidate serial port for ESP32 connection.
+
+    Attributes:
+        device: The device path (e.g., '/dev/cu.usbserial-0001').
+        description: Human-readable description of the port.
+        score: Ranking score for port selection (higher is better).
+    """
     device: str
     description: str
     score: int
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build and return the argument parser for the light control script.
+
+    Returns:
+        argparse.ArgumentParser: Configured parser with all command-line arguments.
+    """
     parser = argparse.ArgumentParser(
         description="Control ESP32 lights over serial.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -116,34 +128,125 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def rgb_value(value: str) -> int:
+    """Validate and convert a string to an RGB color value (0-255).
+
+    Args:
+        value: String representation of the RGB value.
+
+    Returns:
+        int: The validated RGB value.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a valid integer in range 0-255.
+    """
     return ranged_int(value, 0, 255, "RGB value")
 
 
 def speed_value(value: str) -> int:
+    """Validate and convert a string to a speed/delay value (10-5000 ms).
+
+    Args:
+        value: String representation of the speed value.
+
+    Returns:
+        int: The validated speed value in milliseconds.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a valid integer in range 10-5000.
+    """
     return ranged_int(value, 10, 5000, "speed")
 
 
 def buzzer_frequency(value: str) -> int:
+    """Validate and convert a string to a buzzer frequency (20-20000 Hz).
+
+    Args:
+        value: String representation of the frequency.
+
+    Returns:
+        int: The validated frequency in Hz.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a valid integer in range 20-20000.
+    """
     return ranged_int(value, 20, 20000, "buzzer frequency")
 
 
 def beep_duration(value: str) -> int:
+    """Validate and convert a string to a beep duration (10-10000 ms).
+
+    Args:
+        value: String representation of the duration.
+
+    Returns:
+        int: The validated duration in milliseconds.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a valid integer in range 10-10000.
+    """
     return ranged_int(value, 10, 10000, "beep duration")
 
 
 def duty_percent(value: str) -> int:
+    """Validate and convert a string to a duty cycle percentage (1-90%).
+
+    Args:
+        value: String representation of the duty percentage.
+
+    Returns:
+        int: The validated duty percentage.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a valid integer in range 1-90.
+    """
     return ranged_int(value, 1, 90, "duty percent")
 
 
 def drop_count(value: str) -> int:
+    """Validate and convert a string to a drop pattern count (1-10).
+
+    Args:
+        value: String representation of the drop count.
+
+    Returns:
+        int: The validated drop count.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a valid integer in range 1-10.
+    """
     return ranged_int(value, 1, 10, "drop count")
 
 
 def vibration_duration(value: str) -> int:
+    """Validate and convert a string to a vibration duration (1-60000 ms).
+
+    Args:
+        value: String representation of the duration.
+
+    Returns:
+        int: The validated duration in milliseconds.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a valid integer in range 1-60000.
+    """
     return ranged_int(value, 1, 60000, "vibration duration")
 
 
 def ranged_int(value: str, minimum: int, maximum: int, name: str) -> int:
+    """Validate and convert a string to an integer within a specified range.
+
+    Args:
+        value: String representation of the integer.
+        minimum: Minimum allowed value (inclusive).
+        maximum: Maximum allowed value (inclusive).
+        name: Name of the parameter (used in error messages).
+
+    Returns:
+        int: The validated integer.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a valid integer or is out of range.
+    """
     try:
         parsed = int(value)
     except ValueError as exc:
@@ -154,6 +257,7 @@ def ranged_int(value: str, minimum: int, maximum: int, name: str) -> int:
 
 
 def list_serial_ports() -> None:
+    """List all available serial ports with their descriptions."""
     ensure_pyserial()
     ports = list(list_ports.comports())
     if not ports:
@@ -166,6 +270,14 @@ def list_serial_ports() -> None:
 
 
 def port_is_ignored(port: Any) -> bool:
+    """Check if a serial port should be ignored (e.g., Bluetooth, debug console).
+
+    Args:
+        port: A port object from pyserial's list_ports.
+
+    Returns:
+        bool: True if the port should be ignored, False otherwise.
+    """
     device = (port.device or "").lower()
     description = (port.description or "").lower()
     text = f"{device} {description}"
@@ -173,6 +285,16 @@ def port_is_ignored(port: Any) -> bool:
 
 
 def score_serial_port(port: Any) -> int:
+    """Calculate a score for a serial port to determine ESP32 likelihood.
+
+    Higher scores indicate ports more likely to be an ESP32 device.
+
+    Args:
+        port: A port object from pyserial's list_ports.
+
+    Returns:
+        int: A score value (higher is better).
+    """
     device = (port.device or "").lower()
     description = (port.description or "").lower()
     manufacturer = (port.manufacturer or "").lower()
@@ -193,6 +315,17 @@ def score_serial_port(port: Any) -> int:
 
 
 def probe_port(port: str, baud: int) -> bool:
+    """Probe a serial port to check if an ESP32 is connected.
+
+    Sends a probe command and waits for the expected response.
+
+    Args:
+        port: The serial port device path.
+        baud: The baud rate to use.
+
+    Returns:
+        bool: True if the ESP32 responded, False otherwise.
+    """
     busy_message = serial_port_busy_message(port)
     if busy_message:
         print(busy_message, file=sys.stderr)
@@ -225,6 +358,16 @@ def probe_port(port: str, baud: int) -> bool:
 
 
 def serial_port_busy_message(port: str) -> str | None:
+    """Check if a serial port is busy and return a descriptive message.
+
+    Uses lsof on POSIX systems to detect if another process has the port open.
+
+    Args:
+        port: The serial port device path.
+
+    Returns:
+        str | None: A message describing the busy port, or None if not busy.
+    """
     if os.name != "posix":
         return None
 
@@ -254,6 +397,21 @@ def serial_port_busy_message(port: str) -> str | None:
 
 
 def find_esp32_port(baud: int, quiet: bool = False) -> str:
+    """Automatically detect and return the ESP32 serial port.
+
+    Probes available serial ports in order of likelihood and returns the first
+    one that responds to the probe command.
+
+    Args:
+        baud: The baud rate to use for probing.
+        quiet: If True, suppress informational output.
+
+    Returns:
+        str: The device path of the detected ESP32 port.
+
+    Raises:
+        SystemExit: If no ESP32 is found or no serial ports are available.
+    """
     ensure_pyserial()
     ports = [port for port in list_ports.comports() if not port_is_ignored(port)]
     candidates = [
@@ -284,12 +442,25 @@ def find_esp32_port(baud: int, quiet: bool = False) -> str:
 
 
 def ensure_pyserial() -> None:
+    """Ensure the pyserial library is available.
+
+    Raises:
+        SystemExit: If pyserial is not installed.
+    """
     if serial is None:
         print("pyserial is required. Install it with: python3 -m pip install pyserial", file=sys.stderr)
         raise SystemExit(2)
 
 
 def command_text(args: argparse.Namespace) -> str | None:
+    """Convert parsed command-line arguments to an ESP32 command string.
+
+    Args:
+        args: Parsed command-line arguments.
+
+    Returns:
+        str | None: The formatted command string, or None if the command is unknown.
+    """
     if args.command in {"help", "off", "auto", "chase", "alternate", "rainbow", "yellow", "on", "blink"}:
         return args.command
     if args.command == "solid":
@@ -315,6 +486,18 @@ def command_text(args: argparse.Namespace) -> str | None:
 
 
 def open_serial(port: str, baud: int) -> serial.Serial:
+    """Open a serial connection to the ESP32.
+
+    Args:
+        port: The serial port device path.
+        baud: The baud rate to use.
+
+    Returns:
+        serial.Serial: An open serial connection.
+
+    Raises:
+        SystemExit: If the port cannot be opened.
+    """
     ensure_pyserial()
     try:
         connection = serial.Serial(port=port, baudrate=baud, timeout=READ_TIMEOUT, write_timeout=1)
@@ -329,6 +512,14 @@ def open_serial(port: str, baud: int) -> serial.Serial:
 
 
 def send_command(connection: serial.Serial, text: str, read_response: bool, quiet: bool = False) -> None:
+    """Send a command to the ESP32 and optionally read the response.
+
+    Args:
+        connection: An open serial connection.
+        text: The command text to send.
+        read_response: If True, read and print the ESP32 response.
+        quiet: If True, suppress output.
+    """
     line = text.strip()
     if not line:
         return
@@ -346,6 +537,16 @@ def send_command(connection: serial.Serial, text: str, read_response: bool, quie
 
 
 def interactive(connection: serial.Serial, read_response: bool, quiet: bool = False) -> None:
+    """Start an interactive command prompt for the ESP32.
+
+    Reads commands from stdin and sends them to the ESP32 until the user
+    enters 'quit' or 'exit', or EOF is reached.
+
+    Args:
+        connection: An open serial connection.
+        read_response: If True, read and print ESP32 responses.
+        quiet: If True, suppress output.
+    """
     print("Interactive mode. Type ESP32 commands, or 'quit'/'exit' to leave.")
     while True:
         try:
@@ -360,10 +561,20 @@ def interactive(connection: serial.Serial, read_response: bool, quiet: bool = Fa
 
 
 def cache_path() -> str:
+    """Get the path to the cached port file.
+
+    Returns:
+        str: The absolute path to the light_port cache file.
+    """
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "light_port")
 
 
 def read_cached_port() -> str | None:
+    """Read the cached ESP32 port from the cache file.
+
+    Returns:
+        str | None: The cached port path if it exists and is valid, None otherwise.
+    """
     try:
         with open(cache_path(), "r", encoding="utf-8") as file:
             port = file.read().strip()
@@ -375,6 +586,11 @@ def read_cached_port() -> str | None:
 
 
 def write_cached_port(port: str) -> None:
+    """Write the ESP32 port to the cache file for future runs.
+
+    Args:
+        port: The serial port device path to cache.
+    """
     try:
         os.makedirs(os.path.dirname(cache_path()), exist_ok=True)
         with open(cache_path(), "w", encoding="utf-8") as file:
@@ -384,6 +600,13 @@ def write_cached_port(port: str) -> None:
 
 
 def main() -> int:
+    """Main entry point for the light control script.
+
+    Parses arguments, detects or uses the specified ESP32 port, and sends commands.
+
+    Returns:
+        int: Exit code (0 for success, non-zero for errors).
+    """
     parser = build_parser()
     args = parser.parse_args()
 
